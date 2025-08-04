@@ -30,6 +30,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.os.bundleOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -48,7 +51,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.TASK_LLM_ASK_AUDIO
+import com.google.ai.edge.gallery.data.TASK_ECHOSENSE
 import com.google.ai.edge.gallery.data.TASK_LLM_ASK_IMAGE
 import com.google.ai.edge.gallery.data.TASK_LLM_CHAT
 import com.google.ai.edge.gallery.data.TASK_LLM_PROMPT_LAB
@@ -56,6 +61,10 @@ import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.TaskType
 import com.google.ai.edge.gallery.data.getModelByName
 import com.google.ai.edge.gallery.firebaseAnalytics
+import com.google.ai.edge.gallery.ui.echosense.AuditoryAssistanceScreen
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseScreen
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseViewModel
+import com.google.ai.edge.gallery.ui.echosense.VisualAssistanceScreen
 import com.google.ai.edge.gallery.ui.home.HomeScreen
 import com.google.ai.edge.gallery.ui.llmchat.LlmAskAudioDestination
 import com.google.ai.edge.gallery.ui.llmchat.LlmAskAudioScreen
@@ -71,6 +80,18 @@ import com.google.ai.edge.gallery.ui.llmsingleturn.LlmSingleTurnScreen
 import com.google.ai.edge.gallery.ui.llmsingleturn.LlmSingleTurnViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+
+object EchoSenseDestination {
+  const val route = "echosense"
+}
+
+object VisualAssistanceDestination {
+  const val route = "visual_assistance"
+}
+
+object AuditoryAssistanceDestination {
+  const val route = "auditory_assistance"
+}
 
 private const val TAG = "AGGalleryNavGraph"
 private const val ROUTE_PLACEHOLDER = "placeholder"
@@ -267,6 +288,81 @@ fun GalleryNavHost(
         )
       }
     }
+
+    // EchoSense
+    composable(
+      route = "${EchoSenseDestination.route}/{modelName}",
+      arguments = listOf(navArgument("modelName") { type = NavType.StringType }),
+      enterTransition = { slideEnter() },
+      exitTransition = { slideExit() },
+    ) { backStackEntry ->
+      val viewModel: EchoSenseViewModel = hiltViewModel()
+      val context = LocalContext.current
+
+      getModelFromNavigationParam(backStackEntry, TASK_ECHOSENSE)?.let { defaultModel ->
+        modelManagerViewModel.selectModel(defaultModel)
+        viewModel.setModel(defaultModel)
+        
+        // Initialize model when download status changes (like ChatView does)
+        val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
+        val curDownloadStatus = modelManagerUiState.modelDownloadStatus[defaultModel.name]
+        LaunchedEffect(curDownloadStatus, defaultModel.name) {
+          if (curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
+            Log.d("EchoSenseNavigation", "Initializing model '${defaultModel.name}' from EchoSense navigation")
+            modelManagerViewModel.initializeModel(context, task = TASK_ECHOSENSE, model = defaultModel)
+          }
+        }
+      }
+
+      EchoSenseScreen(
+        onVisualAssistanceClick = { navController.navigate(VisualAssistanceDestination.route) },
+        onAuditoryAssistanceClick = { navController.navigate(AuditoryAssistanceDestination.route) },
+        viewModel = viewModel,
+        modelManagerViewModel = modelManagerViewModel // This is the root-level instance
+      )
+    }
+
+    // Visual Assistance - Direct route with model parameter
+    composable(
+      route = "${VisualAssistanceDestination.route}/{modelName}",
+      arguments = listOf(navArgument("modelName") { type = NavType.StringType }),
+      enterTransition = { slideEnter() },
+      exitTransition = { slideExit() },
+    ) { backStackEntry ->
+      val echoSenseViewModel: EchoSenseViewModel = hiltViewModel()
+      val context = LocalContext.current
+      
+      // Get model from navigation parameter and set up the model
+      getModelFromNavigationParam(backStackEntry, TASK_ECHOSENSE)?.let { defaultModel ->
+        modelManagerViewModel.selectModel(defaultModel)
+        echoSenseViewModel.setModel(defaultModel)
+        
+        // Initialize model when download status changes
+        val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
+        val curDownloadStatus = modelManagerUiState.modelDownloadStatus[defaultModel.name]
+        LaunchedEffect(curDownloadStatus, defaultModel.name) {
+          if (curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
+            Log.d("VisualAssistanceNavigation", "Initializing model '${defaultModel.name}' from Visual Assistance navigation")
+            modelManagerViewModel.initializeModel(context, task = TASK_ECHOSENSE, model = defaultModel)
+          }
+        }
+      }
+      
+      VisualAssistanceScreen(
+        onNavigateUp = { navController.navigateUp() },
+        viewModel = echoSenseViewModel,
+        modelManagerViewModel = modelManagerViewModel
+      )
+    }
+
+    // Auditory Assistance
+    composable(
+      route = AuditoryAssistanceDestination.route,
+      enterTransition = { slideEnter() },
+      exitTransition = { slideExit() },
+    ) {
+      AuditoryAssistanceScreen(onNavigateUp = { navController.navigateUp() })
+    }
   }
 
   // Handle incoming intents for deep links
@@ -303,6 +399,10 @@ fun navigateToTaskScreen(
       navController.navigate("${LlmSingleTurnDestination.route}/${modelName}")
     TaskType.TEST_TASK_1 -> {}
     TaskType.TEST_TASK_2 -> {}
+    TaskType.ECHOSENSE -> {
+      // Navigate directly to Visual Assistance with model parameter
+      navController.navigate("${VisualAssistanceDestination.route}/${modelName}")
+    }
   }
 }
 

@@ -93,7 +93,8 @@ private val IMPORT_CONFIGS_LLM: List<Config> =
     LabelConfig(key = ConfigKey.NAME),
     LabelConfig(key = ConfigKey.MODEL_TYPE),
     NumberSliderConfig(
-      key = ConfigKey.DEFAULT_MAX_TOKENS,
+      //key = ConfigKey.DEFAULT_MAX_TOKENS,
+      key = ConfigKey.DEFAULT_MAX_TOKEN,
       sliderMin = 100f,
       sliderMax = 1024f,
       defaultValue = DEFAULT_MAX_TOKEN.toFloat(),
@@ -203,7 +204,8 @@ fun ModelImportDialog(uri: Uri, onDismiss: () -> Unit, onDone: (ImportedModel) -
                   .split(",")
               val defaultMaxTokens =
                 convertValueToTargetType(
-                  value = values.get(ConfigKey.DEFAULT_MAX_TOKENS.label)!!,
+                  //value = values.get(ConfigKey.DEFAULT_MAX_TOKENS.label)!!,
+                  value = values.get(ConfigKey.DEFAULT_MAX_TOKEN.label)!!,
                   valueType = ValueType.INT,
                 )
                   as Int

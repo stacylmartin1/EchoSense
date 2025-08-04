@@ -45,7 +45,7 @@ enum class ConfigKey(val label: String) {
   TOPK("TopK"),
   TOPP("TopP"),
   TEMPERATURE("Temperature"),
-  DEFAULT_MAX_TOKENS("Default max tokens"),
+  DEFAULT_MAX_TOKEN("Default max tokens"),
   DEFAULT_TOPK("Default TopK"),
   DEFAULT_TOPP("Default TopP"),
   DEFAULT_TEMPERATURE("Default temperature"),

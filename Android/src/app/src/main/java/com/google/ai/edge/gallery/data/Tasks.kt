@@ -33,6 +33,7 @@ enum class TaskType(val label: String, val id: String) {
   LLM_PROMPT_LAB(label = "Prompt Lab", id = "llm_prompt_lab"),
   LLM_ASK_IMAGE(label = "Ask Image", id = "llm_ask_image"),
   LLM_ASK_AUDIO(label = "Audio Scribe", id = "llm_ask_audio"),
+  ECHOSENSE(label = "EchoSense Visual Assistance", id = "echosense"),
   TEST_TASK_1(label = "Test task 1", id = "test_task_1"),
   TEST_TASK_2(label = "Test task 2", id = "test_task_2"),
 }
@@ -121,9 +122,20 @@ val TASK_LLM_ASK_AUDIO =
     textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
   )
 
+val TASK_ECHOSENSE =
+  Task(
+    type = TaskType.ECHOSENSE,
+    icon = Icons.Outlined.Widgets,
+    models = mutableListOf(),
+    description = "On-device accessibility companion using LLM for visual scene description",
+    docUrl = "https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference/android",
+    sourceCodeUrl =
+      "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/echosense/EchoSenseViewModel.kt",
+  )
+
 /** All tasks. */
 val TASKS: List<Task> =
-  listOf(TASK_LLM_ASK_IMAGE, TASK_LLM_ASK_AUDIO, TASK_LLM_PROMPT_LAB, TASK_LLM_CHAT)
+  listOf(TASK_ECHOSENSE, TASK_LLM_ASK_IMAGE, TASK_LLM_ASK_AUDIO, TASK_LLM_PROMPT_LAB, TASK_LLM_CHAT)
 
 fun getModelByName(name: String): Model? {
   for (task in TASKS) {

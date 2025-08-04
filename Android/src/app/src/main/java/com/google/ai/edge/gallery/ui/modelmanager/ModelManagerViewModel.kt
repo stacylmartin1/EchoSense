@@ -37,6 +37,7 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatus
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.TASKS
 import com.google.ai.edge.gallery.data.TASK_LLM_ASK_AUDIO
+import com.google.ai.edge.gallery.data.TASK_ECHOSENSE
 import com.google.ai.edge.gallery.data.TASK_LLM_ASK_IMAGE
 import com.google.ai.edge.gallery.data.TASK_LLM_CHAT
 import com.google.ai.edge.gallery.data.TASK_LLM_PROMPT_LAB
@@ -291,9 +292,9 @@ constructor(
         TaskType.LLM_CHAT,
         TaskType.LLM_ASK_IMAGE,
         TaskType.LLM_ASK_AUDIO,
-        TaskType.LLM_PROMPT_LAB ->
+        TaskType.LLM_PROMPT_LAB,
+        TaskType.ECHOSENSE ->
           LlmChatModelHelper.initialize(context = context, model = model, onDone = onDone)
-
         TaskType.TEST_TASK_1 -> {}
         TaskType.TEST_TASK_2 -> {}
       }
@@ -308,8 +309,8 @@ constructor(
         TaskType.LLM_CHAT,
         TaskType.LLM_PROMPT_LAB,
         TaskType.LLM_ASK_IMAGE,
-        TaskType.LLM_ASK_AUDIO -> LlmChatModelHelper.cleanUp(model = model)
-
+        TaskType.LLM_ASK_AUDIO,
+        TaskType.ECHOSENSE -> LlmChatModelHelper.cleanUp(model = model)
         TaskType.TEST_TASK_1 -> {}
         TaskType.TEST_TASK_2 -> {}
       }
@@ -669,6 +670,7 @@ constructor(
         TASK_LLM_PROMPT_LAB.models.clear()
         TASK_LLM_ASK_IMAGE.models.clear()
         TASK_LLM_ASK_AUDIO.models.clear()
+        TASK_ECHOSENSE.models.clear()
         for (allowedModel in modelAllowlist.models) {
           if (allowedModel.disabled == true) {
             continue
@@ -683,6 +685,7 @@ constructor(
           }
           if (allowedModel.taskTypes.contains(TASK_LLM_ASK_IMAGE.type.id)) {
             TASK_LLM_ASK_IMAGE.models.add(model)
+            TASK_ECHOSENSE.models.add(model)
           }
           if (allowedModel.taskTypes.contains(TASK_LLM_ASK_AUDIO.type.id)) {
             TASK_LLM_ASK_AUDIO.models.add(model)

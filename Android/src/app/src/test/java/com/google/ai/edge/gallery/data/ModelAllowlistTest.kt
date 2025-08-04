@@ -36,7 +36,8 @@ class ModelAllowlistTest {
     val topK = 10
     val topP = 0.5f
     val temperature = 0.1f
-    val maxTokens = 1000
+    //val maxTokens = 1000
+    val maxTokens = 4096
     val accelerators = "gpu,cpu"
     val taskTypes = listOf("llm_chat", "ask_image")
     val estimatedPeakMemoryInBytes = 300L

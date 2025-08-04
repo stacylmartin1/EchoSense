@@ -97,36 +97,45 @@ object LlmChatModelHelper {
   }
 
   fun resetSession(model: Model) {
-    try {
-      Log.d(TAG, "Resetting session for model '${model.name}'")
+    synchronized(model) {
+      try {
+        Log.d(TAG, "Resetting session for model '${model.name}'")
 
-      val instance = model.instance as LlmModelInstance? ?: return
-      val session = instance.session
-      session.close()
+        val instance = model.instance as? LlmModelInstance
+        if (instance == null) {
+          Log.w(TAG, "Model instance is null, cannot reset session")
+          return
+        }
 
-      val inference = instance.engine
-      val topK = model.getIntConfigValue(key = ConfigKey.TOPK, defaultValue = DEFAULT_TOPK)
-      val topP = model.getFloatConfigValue(key = ConfigKey.TOPP, defaultValue = DEFAULT_TOPP)
-      val temperature =
-        model.getFloatConfigValue(key = ConfigKey.TEMPERATURE, defaultValue = DEFAULT_TEMPERATURE)
-      val newSession =
-        LlmInferenceSession.createFromOptions(
-          inference,
-          LlmInferenceSession.LlmInferenceSessionOptions.builder()
-            .setTopK(topK)
-            .setTopP(topP)
-            .setTemperature(temperature)
-            .setGraphOptions(
-              GraphOptions.builder()
-                .setEnableVisionModality(model.llmSupportImage)
-                .build()
-            )
-            .build(),
-        )
-      instance.session = newSession
-      Log.d(TAG, "Resetting done")
-    } catch (e: Exception) {
-      Log.d(TAG, "Failed to reset session", e)
+        val session = instance.session
+        session.close()
+
+        val inference = instance.engine
+        val topK = model.getIntConfigValue(key = ConfigKey.TOPK, defaultValue = DEFAULT_TOPK)
+        val topP = model.getFloatConfigValue(key = ConfigKey.TOPP, defaultValue = DEFAULT_TOPP)
+        val temperature =
+          model.getFloatConfigValue(key = ConfigKey.TEMPERATURE, defaultValue = DEFAULT_TEMPERATURE)
+        val newSession =
+          LlmInferenceSession.createFromOptions(
+            inference,
+            LlmInferenceSession.LlmInferenceSessionOptions.builder()
+              .setTopK(topK)
+              .setTopP(topP)
+              .setTemperature(temperature)
+              .setGraphOptions(
+                GraphOptions.builder()
+                  .setEnableVisionModality(model.llmSupportImage)
+                  .build()
+              )
+              .build(),
+          )
+        instance.session = newSession
+        Log.d(TAG, "Resetting done")
+      } catch (e: Exception) {
+        Log.e(TAG, "Failed to reset session", e)
+        // Clear the instance if reset fails to prevent further crashes
+        model.instance = null
+      }
     }
   }
 
@@ -165,28 +174,39 @@ object LlmChatModelHelper {
     images: List<Bitmap> = listOf(),
     audioClips: List<ByteArray> = listOf(),
   ) {
-    val instance = model.instance as LlmModelInstance
+    val instance = model.instance as? LlmModelInstance
+    if (instance == null) {
+      Log.e(TAG, "Model instance is null, cannot run inference")
+      cleanUpListener()
+      return
+    }
 
     // Set listener.
     if (!cleanUpListeners.containsKey(model.name)) {
       cleanUpListeners[model.name] = cleanUpListener
     }
 
-    // Start async inference.
-    //
-    // For a model that supports image modality, we need to add the text query chunk before adding
-    // image.
-    val session = instance.session
-    if (input.trim().isNotEmpty()) {
-      session.addQueryChunk(input)
+    try {
+      // Start async inference.
+      //
+      // For a model that supports image modality, we need to add the text query chunk before adding
+      // image.
+      val session = instance.session
+      if (input.trim().isNotEmpty()) {
+        session.addQueryChunk(input)
+      }
+      for (image in images) {
+        session.addImage(BitmapImageBuilder(image).build())
+      }
+      for (audioClip in audioClips) {
+        // Uncomment when audio is supported.
+        // session.addAudio(audioClip)
+      }
+      val unused = session.generateResponseAsync(resultListener)
+    } catch (e: Exception) {
+      Log.e(TAG, "Error during inference", e)
+      cleanUpListener()
+      throw e
     }
-    for (image in images) {
-      session.addImage(BitmapImageBuilder(image).build())
-    }
-    for (audioClip in audioClips) {
-      // Uncomment when audio is supported.
-      // session.addAudio(audioClip)
-    }
-    val unused = session.generateResponseAsync(resultListener)
   }
 }

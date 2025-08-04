@@ -1,0 +1,132 @@
+# Visual Assistance App - User Guide
+
+## Overview
+The Visual Assistance app is an accessibility tool designed to help visually impaired users navigate indoor environments safely. It uses advanced AI technology to analyze camera images and provide spoken descriptions of the surroundings.
+
+## Key Features
+- Real-time image analysis using AI/LLM technology
+- Text-to-speech audio feedback
+- Voice command support with custom prompts
+- Single-shot operation for efficient battery usage
+- Configurable AI model parameters
+
+## Getting Started
+
+### Prerequisites
+- Android device with camera
+- Microphone access for voice commands
+- Sufficient storage for AI model download
+
+### First Time Setup
+1. Launch the app and navigate to the Visual Assistance feature
+2. Grant camera and microphone permissions when prompted
+3. Wait for the AI model to download and initialize (this may take several minutes)
+4. The "Start" button will become available when the model is ready
+
+## How to Use
+
+### Basic Operation
+1. **Point your camera** at the area you want to analyze
+2. **Press the "Start" button** to capture and analyze the current view
+3. **Listen to the audio description** - the app will speak what it sees
+4. **Press "Stop"** to end the current analysis
+
+### Voice Commands
+The app supports two types of voice commands:
+
+#### Predefined Commands
+- Say **"start"** to begin image analysis
+- Say **"stop"** to end the current analysis
+
+#### Custom Voice Prompts
+1. **Press "Use Voice Command"** button
+2. **Speak your specific request**, for example:
+   - "help me find my glasses"
+   - "describe the furniture in this room"
+   - "tell me about any obstacles ahead"
+   - "where is the door"
+   - "what's on the table"
+3. The app will automatically:
+   - Capture an image
+   - Analyze it with your specific request
+   - Provide a targeted audio response
+
+### Audio Feedback System
+The app uses an advanced continuous text-to-speech system:
+- **Fast Response**: Audio begins within 5 seconds of analysis start
+- **Continuous Updates**: New information is spoken as it becomes available
+- **Complete Coverage**: All generated text is eventually spoken
+- **No Interruptions**: Seamless audio experience with minimal gaps
+
+## Advanced Features
+
+### Model Configuration
+Access the configuration menu (tune icon) to adjust:
+- **Temperature**: Controls creativity vs. accuracy (0.1-1.0)
+- **Top-K**: Limits vocabulary choices (1-40)
+- **Top-P**: Controls response diversity (0.1-1.0)
+- **Processing Mode**: CPU or GPU acceleration
+
+### Optimal Usage Tips
+1. **Good Lighting**: Ensure adequate lighting for best image analysis
+2. **Stable Positioning**: Hold device steady during capture
+3. **Clear Speech**: Speak clearly when using voice commands
+4. **Specific Requests**: Use detailed voice prompts for better results
+5. **Battery Management**: Single-shot operation conserves battery
+
+## Example Usage Scenarios
+
+### Navigation Assistance
+- Voice: "describe the path ahead"
+- Result: Detailed description of walkways, obstacles, and safe routes
+
+### Object Location
+- Voice: "help me find my keys"
+- Result: Analysis of visible objects and guidance on key location
+
+### Room Description
+- Voice: "tell me about this room"
+- Result: Comprehensive description of furniture, layout, and features
+
+### Safety Assessment
+- Voice: "are there any hazards here"
+- Result: Identification of potential obstacles or safety concerns
+
+## Troubleshooting
+
+### Common Issues
+- **"Model Loading..." persists**: Wait for download to complete, ensure stable internet
+- **No audio response**: Check device volume and text-to-speech settings
+- **Voice commands not working**: Verify microphone permissions and speak clearly
+- **Poor image analysis**: Improve lighting conditions and camera positioning
+
+### Performance Tips
+- Close other apps to free memory for AI processing
+- Use GPU mode for faster analysis (if supported)
+- Ensure device has sufficient storage space
+- Keep the app updated for latest improvements
+
+## Privacy and Data
+- All image processing occurs locally on your device
+- No images or voice data are transmitted to external servers
+- Voice commands are processed locally for privacy protection
+
+## Accessibility Features
+- Fully compatible with Android accessibility services
+- Voice-first interface design
+- High contrast visual elements
+- Screen reader friendly
+
+## Technical Requirements
+- Android 7.0 (API level 24) or higher
+- Minimum 4GB RAM recommended
+- 2GB free storage for AI models
+- Rear-facing camera
+- Microphone for voice commands
+
+## Support
+For technical support or feature requests, please refer to the app's main help section or contact the development team through the app store listing.
+
+---
+
+This Visual Assistance app represents a significant advancement in accessibility technology, providing visually impaired users with detailed, contextual information about their environment through the power of AI and voice interaction.

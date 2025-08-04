@@ -32,7 +32,7 @@ android {
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.google.aiedge.gallery"
+    applicationId = "com.google.aiedge.gallery.plus"
     minSdk = 31
     targetSdk = 35
     versionCode = 1
@@ -61,6 +61,9 @@ android {
     jvmTarget = "11"
     freeCompilerArgs += "-Xcontext-receivers"
   }
+  kapt {
+    correctErrorTypes = true
+  }
   buildFeatures {
     compose = true
     buildConfig = true
@@ -83,9 +86,10 @@ dependencies {
   implementation(libs.androidx.datastore)
   implementation(libs.com.google.code.gson)
   implementation(libs.androidx.lifecycle.process)
+  implementation(libs.mediapipe.tasks.audio)
+  implementation(libs.mediapipe.tasks.vision) // Add this line
   implementation(libs.mediapipe.tasks.text)
   implementation(libs.mediapipe.tasks.genai)
-  implementation(libs.mediapipe.tasks.imagegen)
   implementation(libs.commonmark)
   implementation(libs.richtext)
   implementation(libs.tflite)
@@ -113,7 +117,6 @@ dependencies {
   debugImplementation(libs.androidx.ui.tooling)
   debugImplementation(libs.androidx.ui.test.manifest)
 }
-
 protobuf {
   protoc { artifact = "com.google.protobuf:protoc:4.26.1" }
   generateProtoTasks { all().forEach { it.plugins { create("java") { option("lite") } } } }

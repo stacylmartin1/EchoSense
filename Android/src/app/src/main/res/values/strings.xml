@@ -16,9 +16,9 @@
 
 <resources>
     <!-- TODO(jingjin): Add translation support when i18n is ready. -->
-    <string name="app_name" translatable="false">Google AI Edge Gallery</string>
+    <string name="app_name" translatable="false">Google AI Edge Gallery +</string>
     <string name="app_name_first_part" translatable="false">Google AI</string>
-    <string name="app_name_second_part" translatable="false">Edge Gallery</string>
+    <string name="app_name_second_part" translatable="false">Edge Gallery +</string>
     <string name="app_intro" translatable="false">Explore a world of amazing on-device models from</string>
     <string name="model_manager" translatable="false">Model Manager</string>
     <string name="downloaded_size" translatable="false">%1$s downloaded</string>

@@ -123,7 +123,6 @@ fun DownloadAndTryButton(
   // Function to kick off download.
   val startDownload: (accessToken: String?) -> Unit = { accessToken ->
     model.accessToken = accessToken
-    onClicked()
     checkNotificationPermissionAndStartDownload(
       context = context,
       launcher = permissionLauncher,

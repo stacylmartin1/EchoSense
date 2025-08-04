@@ -43,7 +43,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="Edge Gallery"
+        android:label="Edge Gallery +"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Gallery"
@@ -74,7 +74,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="com.google.ai.edge.gallery" />
+                <data android:scheme="com.google.ai.edge.gallery.plus" />
             </intent-filter>
         </activity>
 

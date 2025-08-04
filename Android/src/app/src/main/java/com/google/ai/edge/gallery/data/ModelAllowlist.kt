@@ -53,7 +53,8 @@ data class AllowedModel(
       val defaultTopK: Int = defaultConfig.topK ?: DEFAULT_TOPK
       val defaultTopP: Float = defaultConfig.topP ?: DEFAULT_TOPP
       val defaultTemperature: Float = defaultConfig.temperature ?: DEFAULT_TEMPERATURE
-      val defaultMaxToken = defaultConfig.maxTokens ?: 1024
+      //val defaultMaxToken = defaultConfig.maxTokens ?: 1024
+      val defaultMaxToken = defaultConfig.maxTokens ?: 4096 //SLM
       var accelerators: List<Accelerator> = DEFAULT_ACCELERATORS
       if (defaultConfig.accelerators != null) {
         val items = defaultConfig.accelerators.split(",")
