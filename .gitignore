@@ -1,0 +1,75 @@
+.DS_Store
+# ====================================================================
+# Android Studio & IntelliJ IDEA
+# ====================================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+capture/
+output.json
+
+# Keystore files (NEVER commit your production signing keys)
+*.jks
+*.keystore
+*.p12
+
+# ====================================================================
+# Gradle and Build Outputs
+# ====================================================================
+.gradle/
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# Gradle Signing (if using property-based signing)
+signing.properties
+play-services-json.properties
+
+# ====================================================================
+# Kotlin & Java
+# ====================================================================
+.kotlin/
+*.class
+
+# ====================================================================
+# Secrets, Environment, and API Keys
+# ====================================================================
+# If you keep secrets in explicit files, uncomment these:
+# secrets.properties
+# .env
+
+# ====================================================================
+# Ndk-build / CMake
+# ====================================================================
+obj/
+libs/
+
+# ====================================================================
+# OS Clutter & System Files
+# ====================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ====================================================================
+# Log Files & Test Reports
+# ====================================================================
+*.log
+lint/reports/
+
+# ====================================================================
+# LLM and NN Model Files
+# ====================================================================
+*.litertlm
+*.tflite

@@ -1,0 +1,317 @@
+/*
+ * Copyright 2025 TerraNet Technologies LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.google.ai.edge.gallery.ui.echosense
+
+import android.app.Application
+import android.media.AudioAttributes
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.util.Log
+import android.speech.tts.Voice
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+
+/**
+ * Queue-based wrapper around [android.speech.tts.TextToSpeech] for streaming TTS.
+ *
+ * Key features:
+ * - [queueSentence]: speaks with [TextToSpeech.QUEUE_ADD] (chains after current speech).
+ *   Auto-splits text >3900 chars at sentence boundaries.
+ * - [announceStatus]: speaks with [TextToSpeech.QUEUE_FLUSH] (interrupts for alerts/status).
+ * - [stop]: cancels all queued speech.
+ * - [markInputComplete]: when the last queued utterance finishes, fires [onAllComplete].
+ * - [shutdown]: releases TTS resources.
+ *
+ * Encapsulates TTS initialization with retry logic (3 attempts), language setup,
+ * audio attributes (USAGE_ASSISTANCE_ACCESSIBILITY), and [UtteranceProgressListener] management.
+ */
+class NativeTtsQueuePlayer(
+    private val application: Application,
+    private val onAllComplete: () -> Unit,
+) {
+    private var tts: TextToSpeech? = null
+    var selectedVoiceName: String = "" // Set externally or implicitly read
+    private val isReady = AtomicBoolean(false)
+    private val initAttempts = AtomicInteger(0)
+    private val inputComplete = AtomicBoolean(false)
+    private val utteranceCounter = AtomicInteger(0)
+    private val pendingUtterances = AtomicInteger(0)
+
+    // Deferred announcements that arrived before TTS was ready
+    private val deferredAnnouncements = mutableListOf<String>()
+
+    companion object {
+        private const val TAG = "NativeTtsQueuePlayer"
+        private const val MAX_INIT_ATTEMPTS = 3
+        private const val MAX_TTS_LENGTH = 3900
+    }
+
+    init {
+        initializeTts()
+    }
+
+    val isTtsReady: Boolean get() = isReady.get()
+
+    private fun initializeTts() {
+        val attempt = initAttempts.incrementAndGet()
+        Log.d(TAG, "TTS initialization attempt $attempt/$MAX_INIT_ATTEMPTS")
+        try {
+            tts?.shutdown()
+            tts = TextToSpeech(application) { status -> onTtsInit(status) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating TextToSpeech instance", e)
+            retryInit()
+        }
+    }
+
+    private fun onTtsInit(status: Int) {
+        Log.d(TAG, "TTS onInit status=$status")
+        if (status != TextToSpeech.SUCCESS) {
+            Log.e(TAG, "TTS init failed with status $status")
+            retryInit()
+            return
+        }
+        val engine = tts ?: return
+        
+        if (selectedVoiceName.isNotEmpty()) {
+            val matchedVoice = engine.voices?.find { it.name == selectedVoiceName }
+            if (matchedVoice != null) {
+                engine.voice = matchedVoice
+                Log.d(TAG, "Selected custom voice: $selectedVoiceName")
+            } else {
+                Log.w(TAG, "Voice $selectedVoiceName not found, falling back")
+                applyDefaultLocale(engine)
+            }
+        } else {
+            applyDefaultLocale(engine)
+        }
+
+        engine.setSpeechRate(1.0f)
+        engine.setPitch(1.0f)
+
+        val audioAttrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        engine.setAudioAttributes(audioAttrs)
+
+        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                Log.d(TAG, "Utterance started: $utteranceId")
+            }
+
+            override fun onDone(utteranceId: String?) {
+                Log.d(TAG, "Utterance done: $utteranceId, pending=${pendingUtterances.get()}")
+                val remaining = pendingUtterances.decrementAndGet()
+                if (remaining <= 0 && inputComplete.get()) {
+                    Log.d(TAG, "All utterances complete and input marked done, firing onAllComplete")
+                    onAllComplete()
+                }
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                Log.e(TAG, "Utterance error: $utteranceId")
+                val remaining = pendingUtterances.decrementAndGet()
+                if (remaining <= 0 && inputComplete.get()) {
+                    onAllComplete()
+                }
+            }
+        })
+
+        isReady.set(true)
+        Log.d(TAG, "TTS initialized successfully")
+
+        // Deliver any deferred announcements
+        synchronized(deferredAnnouncements) {
+            for (text in deferredAnnouncements) {
+                speakInternal(text, TextToSpeech.QUEUE_FLUSH)
+            }
+            deferredAnnouncements.clear()
+        }
+    }
+
+    private fun applyDefaultLocale(engine: TextToSpeech) {
+        val langResult = engine.setLanguage(Locale.US)
+        if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Log.w(TAG, "US English not available (result=$langResult), trying default locale")
+            val fallback = engine.setLanguage(Locale.getDefault())
+            if (fallback == TextToSpeech.LANG_MISSING_DATA || fallback == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e(TAG, "No TTS language available")
+                retryInit()
+            }
+        }
+    }
+
+    /**
+     * Update the voice dynamically if TTS is already running.
+     */
+    fun updateVoice(voiceName: String) {
+        selectedVoiceName = voiceName
+        val engine = tts ?: return
+        if (voiceName.isNotEmpty()) {
+            val matchedVoice = engine.voices?.find { it.name == voiceName }
+            if (matchedVoice != null) {
+                engine.voice = matchedVoice
+                Log.d(TAG, "Updated to custom voice: $voiceName")
+                return
+            }
+        }
+        applyDefaultLocale(engine)
+    }
+
+    private fun retryInit() {
+        if (initAttempts.get() < MAX_INIT_ATTEMPTS) {
+            Log.w(TAG, "Retrying TTS init in 2s...")
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                initializeTts()
+            }, 2000)
+        } else {
+            Log.e(TAG, "TTS initialization failed after $MAX_INIT_ATTEMPTS attempts")
+        }
+    }
+
+    /**
+     * Queue a sentence to be spoken after any currently playing/queued speech.
+     * Auto-splits text longer than [MAX_TTS_LENGTH] at sentence boundaries.
+     */
+    fun queueSentence(text: String) {
+        val clean = sanitize(text) ?: return
+        if (clean.length <= MAX_TTS_LENGTH) {
+            speakInternal(clean, TextToSpeech.QUEUE_ADD)
+        } else {
+            splitAndQueue(clean)
+        }
+    }
+
+    /**
+     * Interrupt all queued speech and speak this text immediately.
+     * Used for proximity alerts and status announcements.
+     */
+    fun announceStatus(text: String) {
+        val clean = sanitize(text) ?: return
+        if (!isReady.get()) {
+            Log.w(TAG, "TTS not ready; deferring announcement: '$clean'")
+            synchronized(deferredAnnouncements) {
+                deferredAnnouncements.add(clean)
+            }
+            return
+        }
+        // QUEUE_FLUSH interrupts current speech and clears the queue
+        pendingUtterances.set(0)
+        speakInternal(clean, TextToSpeech.QUEUE_FLUSH)
+    }
+
+    /** Stop all speech and clear the queue. */
+    fun stop() {
+        inputComplete.set(false)
+        pendingUtterances.set(0)
+        tts?.stop()
+    }
+
+    /**
+     * Signal that no more sentences will be queued. When the last pending utterance
+     * finishes, [onAllComplete] will be called.
+     */
+    fun markInputComplete() {
+        inputComplete.set(true)
+        // If nothing is pending (e.g., empty response), fire immediately
+        if (pendingUtterances.get() <= 0) {
+            Log.d(TAG, "markInputComplete: no pending utterances, firing onAllComplete immediately")
+            onAllComplete()
+        }
+    }
+
+    /** Release all TTS resources. Call from ViewModel.onCleared(). */
+    fun shutdown() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        isReady.set(false)
+    }
+
+    private fun speakInternal(text: String, queueMode: Int) {
+        if (!isReady.get()) {
+            Log.w(TAG, "TTS not ready, cannot speak: '$text'")
+            return
+        }
+        val engine = tts ?: return
+        val id = "echosense_${utteranceCounter.incrementAndGet()}"
+        pendingUtterances.incrementAndGet()
+        val result = engine.speak(text, queueMode, null, id)
+        if (result != TextToSpeech.SUCCESS) {
+            Log.e(TAG, "TTS speak failed (result=$result) for: '$text'")
+            pendingUtterances.decrementAndGet()
+        } else {
+            Log.d(TAG, "TTS queued (mode=${if (queueMode == TextToSpeech.QUEUE_ADD) "ADD" else "FLUSH"}): '$text'")
+        }
+    }
+
+    /**
+     * Split long text into chunks ≤ [MAX_TTS_LENGTH] at sentence boundaries,
+     * then queue each chunk.
+     */
+    private fun splitAndQueue(text: String) {
+        var remaining = text
+        while (remaining.isNotEmpty()) {
+            if (remaining.length <= MAX_TTS_LENGTH) {
+                speakInternal(remaining, TextToSpeech.QUEUE_ADD)
+                break
+            }
+            // Find the last sentence-ending punctuation before the limit
+            val searchRange = remaining.substring(0, MAX_TTS_LENGTH)
+            val splitIdx = findLastSentenceBoundary(searchRange)
+            if (splitIdx > 0) {
+                speakInternal(remaining.substring(0, splitIdx).trim(), TextToSpeech.QUEUE_ADD)
+                remaining = remaining.substring(splitIdx).trim()
+            } else {
+                // No sentence boundary found — split at last space
+                val spaceIdx = searchRange.lastIndexOf(' ')
+                if (spaceIdx > 0) {
+                    speakInternal(remaining.substring(0, spaceIdx).trim(), TextToSpeech.QUEUE_ADD)
+                    remaining = remaining.substring(spaceIdx).trim()
+                } else {
+                    // No space either — force split at limit
+                    speakInternal(remaining.substring(0, MAX_TTS_LENGTH), TextToSpeech.QUEUE_ADD)
+                    remaining = remaining.substring(MAX_TTS_LENGTH)
+                }
+            }
+        }
+    }
+
+    private fun findLastSentenceBoundary(text: String): Int {
+        val endings = charArrayOf('.', '!', '?', ';')
+        var lastIdx = -1
+        for (ending in endings) {
+            val idx = text.lastIndexOf(ending)
+            if (idx > lastIdx) {
+                lastIdx = idx
+            }
+        }
+        return if (lastIdx >= 0) lastIdx + 1 else -1
+    }
+
+    private fun sanitize(text: String): String? {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) {
+            Log.w(TAG, "Empty text provided to TTS")
+            return null
+        }
+        return trimmed.replace(Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"), "")
+    }
+}

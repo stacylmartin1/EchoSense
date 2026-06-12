@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(jar -tf:*)",
+      "Bash(unzip:*)",
+      "WebSearch",
+      "WebFetch(domain:picovoice.ai)"
+    ]
+  }
+}
