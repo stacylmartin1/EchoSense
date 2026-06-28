@@ -77,10 +77,12 @@ import com.google.ai.edge.gallery.ui.home.HomeScreen
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.preview.PreviewScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGGalleryNavGraph"
+private const val ROUTE_PREVIEW = "preview"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL_LIST = "model_list"
 private const val ROUTE_MODEL = "route_model"
@@ -155,11 +157,19 @@ fun GalleryNavHost(
 
   NavHost(
     navController = navController,
-    // Default to open home screen.
-    startDestination = ROUTE_HOMESCREEN,
+    // Default to open preview screen.
+    startDestination = ROUTE_PREVIEW,
     enterTransition = { EnterTransition.None },
     exitTransition = { ExitTransition.None },
   ) {
+    // Preview screen (main entry point).
+    composable(route = ROUTE_PREVIEW) {
+      PreviewScreen(
+        modelManagerViewModel = modelManagerViewModel,
+        tosViewModel = hiltViewModel(),
+      )
+    }
+
     // Home screen.
     composable(route = ROUTE_HOMESCREEN) {
       HomeScreen(
