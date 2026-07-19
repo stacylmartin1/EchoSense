@@ -65,7 +65,7 @@
   <string name="model_is_initializing_msg" translatable="false">Initializing model…</string>
   <string name="reset" translatable="false">Reset</string>
   <string name="resetting_engine" translatable="false">Resetting engine...</string>
-  <string name="settings_dialog_tos_title" translatable="false">Terms of services</string>
+  <string name="settings_dialog_tos_title" translatable="false">Terms and privacy</string>
   <string name="text_input_placeholder_text_classification" translatable="false">Type movie review to classify…</string>
   <string name="text_image_generation_text_field_placeholder" translatable="false">Type prompt…</string>
   <string name="text_input_placeholder_llm_chat" translatable="false">Type prompt…</string>

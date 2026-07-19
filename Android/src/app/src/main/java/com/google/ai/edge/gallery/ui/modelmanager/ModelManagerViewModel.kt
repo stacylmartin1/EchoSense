@@ -21,7 +21,6 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.AppLifecycleProvider
-import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.common.getJsonResponse
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
 import com.google.ai.edge.gallery.data.Accelerator
@@ -43,8 +42,10 @@ import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +58,7 @@ private const val TAG = "AGModelManagerViewModel"
 private const val TEXT_INPUT_HISTORY_MAX_SIZE = 50
 private const val MODEL_ALLOWLIST_FILENAME = "model_allowlist.json"
 private const val MODEL_ALLOWLIST_TEST_FILENAME = "model_allowlist_test.json"
+private const val MODEL_CATALOG_URL = "https://models.echosense-ai.app/v1/models.json"
 
 data class ModelInitializationStatus(
   val status: ModelInitializationStatusType,
@@ -178,14 +180,24 @@ constructor(
   }
 
   fun downloadModel(task: Task, model: Model) {
-    // Update status.
+    // Function screens observe selectedModel for download and initialization state. Downloads
+    // started from onboarding or Settings must select the same model before status updates begin.
+    selectModel(model)
+    val shouldResume =
+      uiState.value.modelDownloadStatus[model.name]?.status ==
+        ModelDownloadStatusType.PARTIALLY_DOWNLOADED
+    // Preserve a partial file so the worker can resume with an HTTP Range request.
+    if (!shouldResume) {
+      deleteModel(task = task, model = model)
+    }
+
     setDownloadStatus(
       curModel = model,
-      status = ModelDownloadStatus(status = ModelDownloadStatusType.IN_PROGRESS),
+      status = ModelDownloadStatus(
+        status = ModelDownloadStatusType.IN_PROGRESS,
+        totalBytes = model.totalBytes,
+      ),
     )
-
-    // Delete the model files first.
-    deleteModel(task = task, model = model)
 
     // Start to send download request.
     downloadRepository.downloadModel(
@@ -410,20 +422,17 @@ constructor(
   }
 
   fun loadEchoSenseSettings() {
-    com.google.ai.edge.gallery.ui.home.AppSettings.loadFrom(dataStoreRepository)
+    com.google.ai.edge.gallery.ui.home.AppSettings.loadFrom(dataStoreRepository, context)
   }
 
   fun saveEchoSenseSettings() {
     com.google.ai.edge.gallery.ui.home.AppSettings.persistTo(dataStoreRepository)
   }
 
-  fun getModelUrlResponse(model: Model, accessToken: String? = null): Int {
+  fun getModelUrlResponse(model: Model): Int {
     try {
       val url = URL(model.url)
       val connection = url.openConnection() as HttpURLConnection
-      if (accessToken != null) {
-        connection.setRequestProperty("Authorization", "Bearer $accessToken")
-      }
       connection.connect()
 
       // Report the result.
@@ -517,14 +526,14 @@ constructor(
   }
 
   fun loadModelAllowlist() {
-    // Phase 1: Immediately register all CustomTasks (with their bundled models) into UI state.
-    // This ensures the app is usable offline right away.
+    // Phase 1: Register tasks with their small offline catalog descriptor. The LLM itself is not
+    // packaged with the app.
     val curTasks = customTasks.map { it.task }
     processTasks()
     _uiState.update {
       createUiState().copy(loadingModelAllowlist = false, tasks = curTasks)
     }
-    Log.d(TAG, "Registered ${curTasks.size} tasks with bundled models immediately")
+    Log.d(TAG, "Registered ${curTasks.size} tasks with offline model metadata")
 
     // Load EchoSense settings from DataStore into AppSettings
     loadEchoSenseSettings()
@@ -532,6 +541,10 @@ constructor(
     // Phase 2: Launch background network fetch for additional downloadable models.
     viewModelScope.launch(Dispatchers.IO) {
       try {
+        if (migrateLegacyBundledModel(curTasks)) {
+          processTasks()
+          _uiState.update { createUiState().copy(loadingModelAllowlist = false, tasks = curTasks) }
+        }
         var modelAllowlist: ModelAllowlist? = null
 
         // Try to read the test allowlist first.
@@ -539,9 +552,8 @@ constructor(
         modelAllowlist = readModelAllowlistFromDisk(fileName = MODEL_ALLOWLIST_TEST_FILENAME)
 
         if (modelAllowlist == null) {
-          // Load from github.
-          val url =
-            "https://raw.githubusercontent.com/google-ai-edge/gallery/refs/heads/main/model_allowlists/${BuildConfig.VERSION_NAME.replace(".", "_")}.json"
+          // Load the shared EchoSense model catalog from R2.
+          val url = MODEL_CATALOG_URL
           Log.d(TAG, "Loading model allowlist from internet. Url: $url")
           val data = getJsonResponse<ModelAllowlist>(url = url)
           modelAllowlist = data?.jsonObj
@@ -557,24 +569,31 @@ constructor(
 
         if (modelAllowlist == null) {
           // Non-blocking: just log warning, don't set error state
-          Log.w(TAG, "Could not load model allowlist. Continuing with bundled models only.")
+          Log.w(TAG, "Could not load model catalog. Continuing with cached model metadata.")
           return@launch
         }
 
         Log.d(TAG, "Allowlist: $modelAllowlist")
+        require(modelAllowlist.schemaVersion == 1) { "Unsupported model catalog schema" }
 
         // Add downloadable models from the allowlist to tasks.
         val nameToModel = mutableMapOf<String, Model>()
         for (allowedModel in modelAllowlist.models) {
-          if (allowedModel.disabled == true) {
+          if (!allowedModel.supportedPlatforms.contains("android")) {
             continue
           }
 
-          val model = allowedModel.toModel()
+          val model = try {
+            allowedModel.toModel()
+          } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Ignoring invalid catalog model '${allowedModel.id}': ${e.message}")
+            continue
+          }
           nameToModel.put(model.name, model)
-          for (taskType in allowedModel.taskTypes) {
+          for (taskType in model.bestForTaskIds) {
             val task = curTasks.find { it.id == taskType }
-            task?.models?.add(model)
+            task?.models?.removeAll { it.name == model.name }
+            task?.models?.add(0, model)
           }
         }
 
@@ -653,6 +672,48 @@ constructor(
     return null
   }
 
+  /** Reuses the model copied by older builds instead of forcing a 3.4 GB redownload. */
+  private fun migrateLegacyBundledModel(tasks: List<Task>): Boolean {
+    val model = tasks.asSequence().flatMap { it.models.asSequence() }
+      .firstOrNull { it.sha256.isNotEmpty() } ?: return false
+    val legacy = File(externalFilesDir, "bundled/${model.downloadFileName}")
+    if (!legacy.exists()) return false
+
+    return try {
+      val valid = legacy.length() == model.sizeInBytes && sha256(legacy) == model.sha256.lowercase()
+      if (!valid) {
+        Log.w(TAG, "Removing invalid legacy bundled model copy")
+        legacy.delete()
+        legacy.parentFile?.delete()
+        false
+      } else {
+        val destination = File(model.getPath(context))
+        destination.parentFile?.mkdirs()
+        if (destination.exists()) destination.delete()
+        check(legacy.renameTo(destination)) { "Could not move legacy model" }
+        legacy.parentFile?.delete()
+        Log.i(TAG, "Migrated legacy model to ${destination.absolutePath}")
+        true
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to migrate legacy model", e)
+      false
+    }
+  }
+
+  private fun sha256(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    FileInputStream(file).use { input ->
+      val buffer = ByteArray(4 * 1024 * 1024)
+      while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        if (count > 0) digest.update(buffer, 0, count)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+  }
+
   private fun isModelPartiallyDownloaded(model: Model): Boolean {
     if (model.localModelFilePathOverride.isNotEmpty()) {
       return false
@@ -715,11 +776,22 @@ constructor(
     val textInputHistory = dataStoreRepository.readTextInputHistory()
     Log.d(TAG, "text input history: $textInputHistory")
 
+    val availableModels = customTasks
+      .asSequence()
+      .flatMap { it.task.models.asSequence() }
+      .filter { it.name != EMPTY_MODEL.name }
+      .toList()
+    val previousSelection = _uiState.value.selectedModel
+    val selectedModel =
+      availableModels.firstOrNull { it.name == previousSelection.name }
+        ?: availableModels.firstOrNull()
+
     Log.d(TAG, "model download status: $modelDownloadStatus")
     return ModelManagerUiState(
       tasks = customTasks.map { it.task }.toList(),
       modelDownloadStatus = modelDownloadStatus,
       modelInitializationStatus = modelInstances,
+      selectedModel = selectedModel ?: EMPTY_MODEL,
       textInputHistory = textInputHistory,
     )
   }

@@ -19,15 +19,15 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="sharedpref" path="echosense_secure_credentials.xml"/>
+        <exclude domain="sharedpref" path="model_download_onboarding.xml"/>
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
         -->
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="echosense_secure_credentials.xml"/>
+        <exclude domain="sharedpref" path="model_download_onboarding.xml"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,11 +25,15 @@ import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,9 +53,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
 import com.google.ai.edge.gallery.data.BuiltInTaskId
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
+import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_ID
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 private val TASK_BANNER_ITEMS = listOf(
@@ -68,6 +75,7 @@ fun PreviewScreen(
     var selectedTaskId by rememberSaveable { mutableStateOf(BuiltInTaskId.NAVIGATION_ASSISTANCE) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
+    var showModelDownloadPrompt by rememberSaveable { mutableStateOf(true) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Handle TOS first
@@ -79,7 +87,14 @@ fun PreviewScreen(
         return
     }
 
-    // Use the default task's model as the shared model (all tasks use the same bundled model)
+    val uiState by modelManagerViewModel.uiState.collectAsState()
+    val modelTask = uiState.tasks.firstOrNull { task ->
+        task.models.any { it.name == ECHOSENSE_MODEL_ID }
+    }
+    val onboardingModel = modelTask?.models?.firstOrNull { it.name == ECHOSENSE_MODEL_ID }
+    val onboardingStatus = onboardingModel?.let { uiState.modelDownloadStatus[it.name] }
+
+    // Use the default task's model as the shared model (all tasks use the same downloaded model)
     val defaultCustomTask = modelManagerViewModel.getCustomTaskByTaskId(BuiltInTaskId.NAVIGATION_ASSISTANCE)
     val sharedModel = remember(defaultCustomTask) { defaultCustomTask?.task?.models?.firstOrNull() }
     LaunchedEffect(sharedModel) {
@@ -120,12 +135,70 @@ fun PreviewScreen(
     }
 
     // Handle allowlist loading errors
-    val uiState by modelManagerViewModel.uiState.collectAsState()
     LaunchedEffect(uiState.loadingModelAllowlistError) {
         if (uiState.loadingModelAllowlistError.isNotEmpty()) {
-            snackbarHostState.showSnackbar("Using bundled models only (offline mode)")
+            snackbarHostState.showSnackbar("Using cached model information (offline mode)")
             modelManagerViewModel.clearLoadModelAllowlistError()
         }
+    }
+
+    LaunchedEffect(onboardingStatus?.status) {
+        if (onboardingStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
+            showModelDownloadPrompt = false
+        }
+    }
+
+    if (
+        showModelDownloadPrompt &&
+        modelTask != null &&
+        onboardingModel != null &&
+        onboardingStatus?.status != ModelDownloadStatusType.SUCCEEDED
+    ) {
+        val isDownloading = onboardingStatus?.status == ModelDownloadStatusType.IN_PROGRESS
+        AlertDialog(
+            onDismissRequest = { if (!isDownloading) showModelDownloadPrompt = false },
+            title = { Text("Download On-Device AI") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "EchoSense uses a one-time 3.7 GB download for private, on-device " +
+                            "visual assistance. No account is required."
+                    )
+                    if (isDownloading) {
+                        val progress =
+                            if (onboardingStatus.totalBytes > 0L) {
+                                onboardingStatus.receivedBytes.toFloat() /
+                                    onboardingStatus.totalBytes.toFloat()
+                            } else 0f
+                        LinearProgressIndicator(
+                            progress = { progress.coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text("Downloading ${(progress * 100).toInt()}%")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isDownloading) {
+                            showModelDownloadPrompt = false
+                        } else {
+                            modelManagerViewModel.downloadModel(modelTask, onboardingModel)
+                        }
+                    }
+                ) {
+                    Text(if (isDownloading) "Continue in Background" else "Download Model")
+                }
+            },
+            dismissButton = {
+                if (!isDownloading) {
+                    TextButton(onClick = { showModelDownloadPrompt = false }) {
+                        Text("Not Now")
+                    }
+                }
+            },
+        )
     }
 
     if (showSettingsDialog) {

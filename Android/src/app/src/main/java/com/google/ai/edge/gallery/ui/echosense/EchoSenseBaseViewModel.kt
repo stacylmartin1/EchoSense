@@ -30,15 +30,17 @@ import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.home.LlmResponseStyle
+import com.google.ai.edge.gallery.ui.home.OnlineUsageMode
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatModelHelper
 import com.google.ai.edge.gallery.ui.llmchat.LlmModelInstance
 import java.io.ByteArrayOutputStream
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -60,9 +62,13 @@ abstract class EchoSenseBaseViewModel(
 
     protected val sentenceChunker = StreamingSentenceChunker()
     private val currentTtsVoiceName = MutableStateFlow("")
+    private val promptOnlineAfterSpeech = AtomicBoolean(false)
 
     protected val ttsPlayer = NativeTtsQueuePlayer(application, onAllComplete = {
         viewModelScope.launch {
+            if (promptOnlineAfterSpeech.getAndSet(false)) {
+                AppSettings.recordSuccessfulLocalAnalysis(application)
+            }
             if (_isProcessing.value) {
                 Log.d(TAG, "All TTS utterances complete, stopping processing")
                 stopProcessing()
@@ -107,6 +113,7 @@ abstract class EchoSenseBaseViewModel(
 
     /** Store custom prompt for use in analysis. */
     protected var customPrompt: String? = null
+    private var forceOnlineNext = false
 
     // ---- Voice command infrastructure ----
 
@@ -151,6 +158,7 @@ abstract class EchoSenseBaseViewModel(
     private var previousAnalyzing = false
     private var modelLoadingAnnounced = false
     private var readyAnnounced = false
+    private var modelLoadingRetryJob: Job? = null
     protected var analyzingAnnounced = false
 
     // ---- Abstract / open members ----
@@ -197,6 +205,7 @@ abstract class EchoSenseBaseViewModel(
 
         sentenceChunker.clear()
         ttsPlayer.stop()
+        promptOnlineAfterSpeech.set(false)
 
         _objectDescription.value = ""
         llmTextBuffer.clear()
@@ -212,8 +221,14 @@ abstract class EchoSenseBaseViewModel(
         Log.d(TAG, "Single-shot processing started with clean state")
     }
 
+    fun startOnlineProcessing() {
+        forceOnlineNext = true
+        startProcessing()
+    }
+
     fun stopProcessing() {
         Log.d(TAG, "Stopping processing")
+        stopModelLoadingAnnouncementRetries()
 
         // Invalidate current generation to ignore incoming callbacks
         processingGeneration = 0L
@@ -243,6 +258,7 @@ abstract class EchoSenseBaseViewModel(
 
         sentenceChunker.clear()
         ttsPlayer.stop()
+        promptOnlineAfterSpeech.set(false)
 
         _objectDescription.value = ""
         llmTextBuffer.clear()
@@ -279,18 +295,21 @@ abstract class EchoSenseBaseViewModel(
         if (!isModelReady && !modelLoadingAnnounced && !isAnalyzing && !_isProcessing.value) {
             Log.d(TAG, "Model loading detected, attempting announcement")
             readyAnnounced = false
-            ttsPlayer.announceStatus("model loading wait for ready")
+            ttsPlayer.announceStatus(MODEL_LOADING_ANNOUNCEMENT)
             modelLoadingAnnounced = true
+            startModelLoadingAnnouncementRetries()
         }
 
         if (isModelReady && !readyAnnounced && !isAnalyzing && !_isProcessing.value) {
             Log.d(TAG, "Model became ready, announcing immediately")
+            stopModelLoadingAnnouncementRetries()
             modelLoadingAnnounced = false
-            ttsPlayer.announceStatus("Ready")
+            ttsPlayer.announceStatus(READY_ANNOUNCEMENT)
             readyAnnounced = true
         }
 
         if (isAnalyzing && !analyzingAnnounced && _isProcessing.value) {
+            stopModelLoadingAnnouncementRetries()
             Log.d(TAG, "Analysis started, announcing immediately")
             analyzingAnnounced = true
             ttsPlayer.announceStatus("Analyzing")
@@ -303,6 +322,51 @@ abstract class EchoSenseBaseViewModel(
 
         previousModelReady = isModelReady
         previousAnalyzing = isAnalyzing
+    }
+
+    /**
+     * Retry the startup status announcement after Android runtime permission dialogs close.
+     * On first install, those dialogs can steal focus while TTS accepts but never audibly
+     * plays the initial loading/ready phrase.
+     */
+    fun retryStartupStatusAnnouncementAfterPermission(isModelReady: Boolean, isAnalyzing: Boolean) {
+        if (isAnalyzing || _isProcessing.value) return
+
+        if (isModelReady) {
+            Log.d(TAG, "Retrying ready announcement after permission dialog")
+            stopModelLoadingAnnouncementRetries()
+            modelLoadingAnnounced = false
+            readyAnnounced = true
+            ttsPlayer.announceStatus(READY_ANNOUNCEMENT)
+        } else {
+            Log.d(TAG, "Retrying model loading announcement after permission dialog")
+            readyAnnounced = false
+            modelLoadingAnnounced = true
+            ttsPlayer.announceStatus(MODEL_LOADING_ANNOUNCEMENT)
+            startModelLoadingAnnouncementRetries()
+        }
+    }
+
+    private fun startModelLoadingAnnouncementRetries() {
+        if (modelLoadingRetryJob?.isActive == true) return
+
+        modelLoadingRetryJob = viewModelScope.launch {
+            repeat(MODEL_LOADING_RETRY_COUNT) { attempt ->
+                delay(MODEL_LOADING_RETRY_DELAY_MS)
+                if (previousModelReady || _isProcessing.value || _isAnalyzing.value) {
+                    Log.d(TAG, "Stopping model loading announcement retries")
+                    return@launch
+                }
+
+                Log.d(TAG, "Retrying model loading announcement (${attempt + 1}/$MODEL_LOADING_RETRY_COUNT)")
+                ttsPlayer.announceStatus(MODEL_LOADING_ANNOUNCEMENT)
+            }
+        }
+    }
+
+    private fun stopModelLoadingAnnouncementRetries() {
+        modelLoadingRetryJob?.cancel()
+        modelLoadingRetryJob = null
     }
 
     fun onConfigChanged(oldConfigValues: Map<String, Any>, newConfigValues: Map<String, Any>) {
@@ -365,7 +429,9 @@ abstract class EchoSenseBaseViewModel(
             return
         }
 
-        analyzeBitmap(bitmap)
+        val forceOnline = forceOnlineNext
+        forceOnlineNext = false
+        analyzeBitmap(bitmap, forceOnline)
     }
 
     /**
@@ -375,7 +441,7 @@ abstract class EchoSenseBaseViewModel(
      * This method can be called directly when a bitmap is already available (e.g., from
      * proximity detection or a saved image), or indirectly via [analyzeImage].
      */
-    fun analyzeBitmap(bitmap: Bitmap) {
+    fun analyzeBitmap(bitmap: Bitmap, forceOnline: Boolean = false) {
         val model = currentModel
         if (model == null) {
             _error.value = "Model not set. Please wait for model to be selected."
@@ -384,6 +450,13 @@ abstract class EchoSenseBaseViewModel(
 
         // Downscale if needed to avoid OOM / native crashes in the LLM engine
         val scaledBitmap = scaleBitmapToMaxSize(bitmap, LLM_MAX_IMAGE_SIZE)
+
+        val canUseOnline =
+            OnlineAnalysisHelper.isAvailable() && AppSettings.onlineConsentGranted.value
+        if (canUseOnline && (forceOnline || AppSettings.onlineUsageMode.value == OnlineUsageMode.PREFER_ONLINE)) {
+            analyzeBitmapOnline(scaledBitmap)
+            return
+        }
 
         if (!_isProcessing.value) {
             Log.d(TAG, "Processing not active, skipping bitmap analysis")
@@ -472,9 +545,10 @@ abstract class EchoSenseBaseViewModel(
                                 inferenceJob = null
                                 sentenceChunker.onDone()
                                 drainChunkerToTts()
-                                ttsPlayer.markInputComplete()
                                 val finalText = llmTextBuffer.toString()
                                 Log.d(TAG, "LLM analysis complete, final text: '$finalText'")
+                                promptOnlineAfterSpeech.set(finalText.isNotBlank())
+                                ttsPlayer.markInputComplete()
                                 onAnalysisComplete(finalText)
                             }
                         }
@@ -484,14 +558,48 @@ abstract class EchoSenseBaseViewModel(
                     },
                     onError = { errorMessage ->
                         Log.e(TAG, "Error analyzing image: $errorMessage")
-                        _error.value = "Error: $errorMessage"
                         _isAnalyzing.value = false
+                        if (
+                            OnlineAnalysisHelper.isAvailable() &&
+                            AppSettings.onlineConsentGranted.value &&
+                            AppSettings.onlineUsageMode.value == OnlineUsageMode.FALLBACK
+                        ) {
+                            Log.d(TAG, "Local analysis failed; using configured online fallback")
+                            analyzeBitmapOnline(scaledBitmap, prompt)
+                        } else {
+                            _error.value = "Error: $errorMessage"
+                        }
                     }
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Error firing usage or launching inference", e)
                 _error.value = "Error analyzing image: ${e.message}"
                 _isAnalyzing.value = false
+            }
+        }
+    }
+
+    private fun analyzeBitmapOnline(bitmap: Bitmap, promptOverride: String? = null) {
+        if (!_isProcessing.value || _isAnalyzing.value || !OnlineAnalysisHelper.isAvailable()) return
+        val isVerbose = AppSettings.llmResponseStyle.value == LlmResponseStyle.VERBOSE
+        val prompt = promptOverride ?: getAnalysisPrompt(customPrompt, isVerbose)
+        customPrompt = null
+        _isAnalyzing.value = true
+        _activeModelName.value = AppSettings.onlineProvider.value.displayName
+        inferenceJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val result = OnlineAnalysisHelper.analyzeImage(bitmap, prompt)
+                if (!_isProcessing.value) return@launch
+                _objectDescription.value = result
+                _isAnalyzing.value = false
+                inferenceJob = null
+                speakText(result)
+                onAnalysisComplete(result)
+            } catch (e: Exception) {
+                Log.w(TAG, "Online analysis failed: ${e.message}")
+                _error.value = e.message ?: "Online analysis failed"
+                _isAnalyzing.value = false
+                inferenceJob = null
             }
         }
     }
@@ -681,13 +789,9 @@ abstract class EchoSenseBaseViewModel(
     private val _isCollisionAvoidanceEnabled = MutableStateFlow(false)
     val isCollisionAvoidanceEnabled: StateFlow<Boolean> = _isCollisionAvoidanceEnabled
 
-    private var lastAlertKey: String? = null
     private var lastAlertTs: Long = 0L
     private var lastAlertBearing: Bearing? = null
     private var lastAlertSeverity: ProximitySeverity? = null
-
-    /** Guard: true while TTS is speaking a proximity alert. Prevents interrupt/overlap. */
-    @Volatile private var proximitySpeaking = false
 
     /**
      * Minimum interval before re-announcing the SAME bearing+severity combo.
@@ -703,7 +807,6 @@ abstract class EchoSenseBaseViewModel(
             _proximityBoxes.value = emptyList()
             _proximityBest.value = null
             _proximityAlert.value = null
-            proximitySpeaking = false
         }
     }
 
@@ -788,10 +891,6 @@ abstract class EchoSenseBaseViewModel(
     }
 
     private fun maybeSpeakProximity(alert: ProximityAlert) {
-        // ── Guard: If TTS is still speaking a previous proximity alert, skip. ──
-        // This prevents the "obstacle, obst, obstacle" stutter.
-        if (proximitySpeaking) return
-
         val now = System.currentTimeMillis()
         val elapsed = now - lastAlertTs
 
@@ -827,21 +926,10 @@ abstract class EchoSenseBaseViewModel(
             }
         }
 
-        // ── Always flush-speak for immediate playback (no queue latency) ──
-        proximitySpeaking = true
-        ttsPlayer.stop()  // Clear any prior speech
+        // Always flush-speak so the newest proximity alert wins over stale speech.
         ttsPlayer.announceStatus(phrase)
 
-        // Release the guard after the phrase has likely finished.
-        // Approximate TTS duration: ~80ms per character + 200ms engine overhead.
-        val estimatedDurationMs = (phrase.length * 80L + 200L).coerceIn(500L, 3000L)
-        viewModelScope.launch {
-            delay(estimatedDurationMs)
-            proximitySpeaking = false
-        }
-
         lastAlertTs = now
-        lastAlertKey = "${alert.label}:${alert.severity}:${alert.bearing}"
         lastAlertBearing = alert.bearing
         lastAlertSeverity = alert.severity
     }
@@ -857,12 +945,17 @@ abstract class EchoSenseBaseViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        stopModelLoadingAnnouncementRetries()
         voiceCommandHelper.stopListening()
         ttsPlayer.shutdown()
     }
 
     companion object {
         private const val TAG = "EchoSenseBaseVM"
+        private const val MODEL_LOADING_ANNOUNCEMENT = "Model loading wait for ready"
+        private const val READY_ANNOUNCEMENT = "Ready."
+        private const val MODEL_LOADING_RETRY_COUNT = 3
+        private const val MODEL_LOADING_RETRY_DELAY_MS = 2_000L
         /** Maximum dimension (width or height) for images passed to the on-device LLM.
          *  Larger images are scaled down to avoid OOM / SIGSEGV in the native engine. */
         const val LLM_MAX_IMAGE_SIZE = 768

@@ -17,23 +17,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -59,13 +58,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentReaderScreen(
-    onNavigateUp: () -> Unit = {},
     viewModel: DocumentReaderViewModel,
     modelManagerViewModel: ModelManagerViewModel
 ) {
@@ -91,7 +91,11 @@ fun DocumentReaderScreen(
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasCameraPermission = it }
+    var permissionPromptResponded by remember { mutableStateOf(false) }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasCameraPermission = it
+        permissionPromptResponded = true
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { selectedUri ->
@@ -127,6 +131,12 @@ fun DocumentReaderScreen(
 
     LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
     LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(permissionPromptResponded, hasCameraPermission) {
+        if (permissionPromptResponded && hasCameraPermission) {
+            delay(750)
+            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+        }
+    }
 
     DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
 
@@ -149,14 +159,6 @@ fun DocumentReaderScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Document Reader") },
-                navigationIcon = {
-                    IconButton(
-                        onClick = { viewModel.stopProcessing(); onNavigateUp() },
-                        modifier = Modifier.semantics { contentDescription = "Navigate back" }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
             )
         }
     ) { paddingValues ->
@@ -235,50 +237,47 @@ fun DocumentReaderScreen(
                 }
             }
 
-            // Action buttons
-            Column(modifier = Modifier.padding(16.dp).fillMaxWidth()
-                .semantics(mergeDescendants = true) {},
-                horizontalAlignment = Alignment.CenterHorizontally
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button(
-                        onClick = {
-                            if (!showCamera) {
-                                // First click: show camera preview, wait for binding
-                                showCamera = true
-                                viewModel.announceAction("Camera ready. Tap Take Photo to capture.")
-                            } else {
-                                // Camera already showing: capture + analyze
-                                viewModel.startProcessing()
-                                viewModel.announceAction("Reading document")
-                                captureAndAnalyze()
-                            }
-                        },
-                        enabled = !isAnalyzing && hasCameraPermission,
-                        modifier = Modifier.weight(1f).padding(end = 4.dp)
-                            .sizeIn(minHeight = 48.dp)
-                            .semantics { contentDescription = "Take photo of document" }
-                    ) { Text(if (isAnalyzing && showCamera) "Reading..." else "Take Photo") }
-                    Button(
-                        onClick = {
-                            showCamera = false
-                            filePickerLauncher.launch(arrayOf("text/*", "application/pdf", "image/*"))
-                        },
-                        modifier = Modifier.weight(1f).padding(start = 4.dp)
-                            .sizeIn(minHeight = 48.dp)
-                            .semantics { contentDescription = "Upload file to read" }
-                    ) { Text("Upload File") }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button(
-                        onClick = { viewModel.stopReading() },
-                        enabled = isProcessing || isAnalyzing,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
-                        modifier = Modifier.fillMaxWidth().height(52.dp)
-                            .semantics { contentDescription = "Stop reading aloud" }
-                    ) { Text("Stop Reading", color = Color.White) }
-                }
+                EchoSenseActionButton(
+                    icon = Icons.Default.CameraAlt,
+                    label = "Read",
+                    contentDescription = "Take photo of document",
+                    onClick = {
+                        if (!showCamera) {
+                            showCamera = true
+                            viewModel.announceAction("Camera ready. Tap Read to capture.")
+                        } else {
+                            viewModel.startProcessing()
+                            viewModel.announceAction("Reading document")
+                            captureAndAnalyze()
+                        }
+                    },
+                    enabled = !isAnalyzing && hasCameraPermission,
+                    highlighted = true,
+                    highlightColor = Color(0xFF4CAF50),
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.UploadFile,
+                    label = "Upload",
+                    contentDescription = "Upload file to read",
+                    onClick = {
+                        showCamera = false
+                        filePickerLauncher.launch(arrayOf("text/*", "application/pdf", "image/*"))
+                    },
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.Stop,
+                    label = "Stop",
+                    contentDescription = "Stop reading aloud",
+                    onClick = { viewModel.stopReading() },
+                    enabled = isProcessing || isAnalyzing,
+                    highlighted = true,
+                    highlightColor = Color(0xFFF44336),
+                )
             }
         }
     }

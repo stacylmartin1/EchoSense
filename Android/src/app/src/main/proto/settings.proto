@@ -65,10 +65,15 @@ message EchoSenseSettings {
   bool text_overlay_enabled = 2;
   // "concise" or "verbose"
   string llm_response_style = 3;
-  // User-provided Gemini API key for online features (BYOK)
+  // Deprecated plaintext credential. Migrated to Android Keystore-backed storage.
   string gemini_api_key = 4;
   bool show_debug_overlay = 5;
   string tts_voice_name = 6;
+  // "gemini" or "openai"
+  string online_provider = 7;
+  // "ask", "fallback", or "prefer_online"
+  string online_usage_mode = 8;
+  bool online_consent_granted = 9;
 }
 
 message Settings {

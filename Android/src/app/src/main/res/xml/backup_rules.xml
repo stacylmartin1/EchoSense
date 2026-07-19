@@ -20,6 +20,8 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
+    <exclude domain="sharedpref" path="echosense_secure_credentials.xml"/>
+    <exclude domain="sharedpref" path="model_download_onboarding.xml"/>
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

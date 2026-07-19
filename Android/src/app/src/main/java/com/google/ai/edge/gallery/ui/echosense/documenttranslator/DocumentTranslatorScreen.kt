@@ -31,16 +31,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -74,13 +74,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentTranslatorScreen(
-    onNavigateUp: () -> Unit = {},
     viewModel: DocumentTranslatorViewModel,
     modelManagerViewModel: ModelManagerViewModel
 ) {
@@ -102,7 +103,11 @@ fun DocumentTranslatorScreen(
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasCameraPermission = it }
+    var permissionPromptResponded by remember { mutableStateOf(false) }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasCameraPermission = it
+        permissionPromptResponded = true
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { selectedUri ->
@@ -140,6 +145,12 @@ fun DocumentTranslatorScreen(
 
     LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
     LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(permissionPromptResponded, hasCameraPermission) {
+        if (permissionPromptResponded && hasCameraPermission) {
+            delay(750)
+            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+        }
+    }
 
     DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
 
@@ -156,14 +167,6 @@ fun DocumentTranslatorScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Document Translator") },
-                navigationIcon = {
-                    IconButton(
-                        onClick = { viewModel.stopProcessing(); onNavigateUp() },
-                        modifier = Modifier.semantics { contentDescription = "Navigate back" }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
                 actions = {
                     IconButton(
                         onClick = { showLanguageDialog = true },
@@ -259,8 +262,15 @@ fun DocumentTranslatorScreen(
                     )
                 }
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button(
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    EchoSenseActionButton(
+                        icon = Icons.Default.CameraAlt,
+                        label = "Translate",
+                        contentDescription = "Take photo to translate",
                         onClick = {
                             showCamera = true
                             viewModel.startProcessing()
@@ -268,29 +278,29 @@ fun DocumentTranslatorScreen(
                             captureAndAnalyzeText()
                         },
                         enabled = !isAnalyzing && hasCameraPermission,
-                        modifier = Modifier.weight(1f).padding(end = 4.dp)
-                            .sizeIn(minHeight = 48.dp)
-                            .semantics { contentDescription = "Take photo to translate" }
-                    ) { Text(if (isAnalyzing && showCamera) "Translating..." else "Take Photo") }
-                    Button(
+                        highlighted = true,
+                        highlightColor = Color(0xFF4CAF50),
+                    )
+                    EchoSenseActionButton(
+                        icon = Icons.Default.UploadFile,
+                        label = "Upload",
+                        contentDescription = "Upload file to translate",
                         onClick = {
                             showCamera = false
                             viewModel.announceAction("Translating")
                             filePickerLauncher.launch(arrayOf("text/*", "application/pdf", "image/*"))
                         },
-                        modifier = Modifier.weight(1f).padding(start = 4.dp)
-                            .sizeIn(minHeight = 48.dp)
-                            .semantics { contentDescription = "Upload file to translate" }
-                    ) { Text("Upload File") }
+                    )
+                    EchoSenseActionButton(
+                        icon = Icons.Default.Stop,
+                        label = "Stop",
+                        contentDescription = "Stop translation",
+                        onClick = { viewModel.stopTranslating() },
+                        enabled = isProcessing || isAnalyzing,
+                        highlighted = true,
+                        highlightColor = Color(0xFFF44336),
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = { viewModel.stopTranslating() },
-                    enabled = isProcessing || isAnalyzing,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                        .semantics { contentDescription = "Stop translation" }
-                ) { Text("Stop", color = Color.White) }
             }
         }
     }

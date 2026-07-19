@@ -113,8 +113,7 @@ data class Model(
   /**
    * The URL to download the model from.
    *
-   * If the url is from HuggingFace, we will automatically prompt users to fetch access token if the
-   * model is gated.
+   * The URL must be a direct HTTPS download supplied by the EchoSense model catalog.
    */
   val url: String = "",
 
@@ -124,6 +123,12 @@ data class Model(
    * This will be used to calculate download progress.
    */
   val sizeInBytes: Long = 0L,
+
+  /** SHA-256 expected for the completed download. */
+  val sha256: String = "",
+
+  /** Model license displayed before and after installation. */
+  val licenseUrl: String = "",
 
   /**
    * The name of the downloaded model file.
@@ -223,7 +228,6 @@ data class Model(
   var configValues: Map<String, Any> = mapOf(),
   var prevConfigValues: Map<String, Any> = mapOf(),
   var totalBytes: Long = 0L,
-  var accessToken: String? = null,
 ) {
   init {
     normalizedName = NORMALIZE_NAME_REGEX.replace(name, "_")

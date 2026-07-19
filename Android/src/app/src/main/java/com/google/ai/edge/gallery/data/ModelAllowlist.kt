@@ -1,109 +1,96 @@
 /*
- * Copyright 2025 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2025 TerraNet Technologies LLC
+ * Licensed under the Apache License, Version 2.0.
  */
 
 package com.google.ai.edge.gallery.data
 
-import com.google.gson.annotations.SerializedName
-
 data class DefaultConfig(
-  @SerializedName("topK") val topK: Int?,
-  @SerializedName("topP") val topP: Float?,
-  @SerializedName("temperature") val temperature: Float?,
-  @SerializedName("accelerators") val accelerators: String?,
-  @SerializedName("maxTokens") val maxTokens: Int?,
+  val topK: Int? = null,
+  val topP: Float? = null,
+  val temperature: Float? = null,
+  val accelerators: String? = null,
+  val maxTokens: Int? = null,
 )
 
-/** A model in the model allowlist. */
+/** Cross-platform model descriptor served by models.echosense-ai.app. */
 data class AllowedModel(
-  val name: String,
-  val modelId: String,
-  val modelFile: String,
-  val description: String,
-  val sizeInBytes: Long,
-  val commitHash: String,
-  val defaultConfig: DefaultConfig,
-  val taskTypes: List<String>,
-  val disabled: Boolean? = null,
-  val llmSupportImage: Boolean? = null,
-  val llmSupportAudio: Boolean? = null,
-  val minDeviceMemoryInGb: Int? = null,
-  val bestForTaskTypes: List<String>? = null,
-  val localModelFilePathOverride: String? = null,
-  val url: String? = null,
+  val id: String,
+  val displayName: String,
+  val version: String,
+  val filename: String,
+  val url: String,
+  val licenseURL: String,
+  val sizeBytes: Long,
+  val sha256: String,
+  val supportedPlatforms: List<String> = emptyList(),
+  val minimumAndroidSDK: Int? = null,
+  val minimumMemoryGB: Int? = null,
+  val capabilities: List<String> = emptyList(),
+  val recommended: Boolean = false,
+  val defaultConfig: DefaultConfig? = null,
+  val taskTypes: List<String>? = null,
 ) {
-  fun toModel(): Model {
-    // Construct HF download url.
-    val downloadUrl =
-      url ?: "https://huggingface.co/$modelId/resolve/$commitHash/$modelFile?download=true"
-
-    // Config — all EchoSense tasks use LLM inference, so always generate LLM configs.
-    var configs: MutableList<Config> = mutableListOf()
-    val defaultTopK: Int = defaultConfig.topK ?: DEFAULT_TOPK
-    val defaultTopP: Float = defaultConfig.topP ?: DEFAULT_TOPP
-    val defaultTemperature: Float = defaultConfig.temperature ?: DEFAULT_TEMPERATURE
-    val defaultMaxToken = defaultConfig.maxTokens ?: 1024
-    var accelerators: List<Accelerator> = DEFAULT_ACCELERATORS
-    if (defaultConfig.accelerators != null) {
-      val items = defaultConfig.accelerators.split(",")
-      accelerators = mutableListOf()
-      for (item in items) {
-        if (item == "cpu") {
-          accelerators.add(Accelerator.CPU)
-        } else if (item == "gpu") {
-          accelerators.add(Accelerator.GPU)
-        }
-      }
+  fun validateForAndroid() {
+    require(id.isNotBlank() && version.isNotBlank() && filename.isNotBlank()) {
+      "Model id, version, and filename are required"
     }
-    configs =
-      createLlmChatConfigs(
-          defaultTopK = defaultTopK,
-          defaultTopP = defaultTopP,
-          defaultTemperature = defaultTemperature,
-          defaultMaxToken = defaultMaxToken,
-          accelerators = accelerators,
-        )
-        .toMutableList()
-
-    // Misc.
-    val showBenchmarkButton = false
-    val showRunAgainButton = false
-
-    return Model(
-      name = name,
-      version = commitHash,
-      info = description,
-      url = downloadUrl,
-      sizeInBytes = sizeInBytes,
-      minDeviceMemoryInGb = minDeviceMemoryInGb,
-      configs = configs,
-      downloadFileName = modelFile,
-      showBenchmarkButton = showBenchmarkButton,
-      showRunAgainButton = showRunAgainButton,
-      learnMoreUrl = "https://huggingface.co/${modelId}",
-      llmSupportImage = llmSupportImage == true,
-      llmSupportAudio = llmSupportAudio == true,
-      bestForTaskIds = bestForTaskTypes ?: listOf(),
-      localModelFilePathOverride = localModelFilePathOverride ?: "",
-    )
+    require(url.startsWith("https://") && licenseURL.startsWith("https://")) {
+      "Model and license URLs must use HTTPS"
+    }
+    require(sizeBytes > 0) { "Model size must be positive" }
+    require(sha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Model SHA-256 is invalid" }
+    require(supportedPlatforms.contains("android")) { "Model does not support Android" }
   }
 
-  override fun toString(): String {
-    return "$modelId/$modelFile"
+  fun toModel(): Model {
+    validateForAndroid()
+    val config = defaultConfig
+    val accelerators =
+      config?.accelerators?.split(",")?.mapNotNull {
+        when (it.trim()) {
+          "cpu" -> Accelerator.CPU
+          "gpu" -> Accelerator.GPU
+          else -> null
+        }
+      }?.ifEmpty { null } ?: DEFAULT_ACCELERATORS
+    val taskIds =
+      taskTypes ?: listOf(
+        BuiltInTaskId.NAVIGATION_ASSISTANCE,
+        BuiltInTaskId.CURRENCY_MODE,
+        BuiltInTaskId.DOCUMENT_READER,
+        BuiltInTaskId.DOCUMENT_TRANSLATOR,
+      )
+
+    return Model(
+      name = id,
+      displayName = displayName,
+      info = "Downloaded on-device multimodal model. Supports text and image input.",
+      url = url,
+      version = version,
+      downloadFileName = filename,
+      sizeInBytes = sizeBytes,
+      sha256 = sha256.lowercase(),
+      licenseUrl = licenseURL,
+      minDeviceMemoryInGb = minimumMemoryGB,
+      configs = createLlmChatConfigs(
+        defaultTopK = config?.topK ?: 40,
+        defaultTopP = config?.topP ?: 0.95f,
+        defaultTemperature = config?.temperature ?: 1.0f,
+        defaultMaxToken = config?.maxTokens ?: 4096,
+        accelerators = accelerators,
+      ),
+      showBenchmarkButton = false,
+      showRunAgainButton = false,
+      llmSupportImage = capabilities.contains("image"),
+      llmSupportAudio = capabilities.contains("audio"),
+      bestForTaskIds = taskIds,
+      learnMoreUrl = licenseURL,
+    )
   }
 }
 
-/** The model allowlist. */
-data class ModelAllowlist(val models: List<AllowedModel>)
+data class ModelAllowlist(
+  val schemaVersion: Int,
+  val models: List<AllowedModel>,
+)

@@ -25,6 +25,7 @@ import android.speech.tts.Voice
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.Collections
 
 /**
  * Queue-based wrapper around [android.speech.tts.TextToSpeech] for streaming TTS.
@@ -51,6 +52,7 @@ class NativeTtsQueuePlayer(
     private val inputComplete = AtomicBoolean(false)
     private val utteranceCounter = AtomicInteger(0)
     private val pendingUtterances = AtomicInteger(0)
+    private val activeUtteranceIds = Collections.synchronizedSet(mutableSetOf<String>())
 
     // Deferred announcements that arrived before TTS was ready
     private val deferredAnnouncements = mutableListOf<String>()
@@ -117,20 +119,18 @@ class NativeTtsQueuePlayer(
 
             override fun onDone(utteranceId: String?) {
                 Log.d(TAG, "Utterance done: $utteranceId, pending=${pendingUtterances.get()}")
-                val remaining = pendingUtterances.decrementAndGet()
-                if (remaining <= 0 && inputComplete.get()) {
-                    Log.d(TAG, "All utterances complete and input marked done, firing onAllComplete")
-                    onAllComplete()
-                }
+                completeUtterance(utteranceId)
             }
 
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
                 Log.e(TAG, "Utterance error: $utteranceId")
-                val remaining = pendingUtterances.decrementAndGet()
-                if (remaining <= 0 && inputComplete.get()) {
-                    onAllComplete()
-                }
+                completeUtterance(utteranceId)
+            }
+
+            override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                Log.d(TAG, "Utterance stopped: $utteranceId, interrupted=$interrupted")
+                completeUtterance(utteranceId)
             }
         })
 
@@ -205,22 +205,41 @@ class NativeTtsQueuePlayer(
      */
     fun announceStatus(text: String) {
         val clean = sanitize(text) ?: return
+        inputComplete.set(false)
         if (!isReady.get()) {
             Log.w(TAG, "TTS not ready; deferring announcement: '$clean'")
             synchronized(deferredAnnouncements) {
+                deferredAnnouncements.clear()
                 deferredAnnouncements.add(clean)
             }
             return
         }
         // QUEUE_FLUSH interrupts current speech and clears the queue
-        pendingUtterances.set(0)
+        resetPendingUtterances()
         speakInternal(clean, TextToSpeech.QUEUE_FLUSH)
+    }
+
+    /**
+     * Queue a short status update after current speech. Used when preserving
+     * an in-progress status phrase matters more than immediate interruption.
+     */
+    fun queueStatus(text: String) {
+        val clean = sanitize(text) ?: return
+        inputComplete.set(false)
+        if (!isReady.get()) {
+            Log.w(TAG, "TTS not ready; deferring queued status: '$clean'")
+            synchronized(deferredAnnouncements) {
+                deferredAnnouncements.add(clean)
+            }
+            return
+        }
+        speakInternal(clean, TextToSpeech.QUEUE_ADD)
     }
 
     /** Stop all speech and clear the queue. */
     fun stop() {
         inputComplete.set(false)
-        pendingUtterances.set(0)
+        resetPendingUtterances()
         tts?.stop()
     }
 
@@ -243,6 +262,7 @@ class NativeTtsQueuePlayer(
         tts?.shutdown()
         tts = null
         isReady.set(false)
+        resetPendingUtterances()
     }
 
     private fun speakInternal(text: String, queueMode: Int) {
@@ -252,13 +272,36 @@ class NativeTtsQueuePlayer(
         }
         val engine = tts ?: return
         val id = "echosense_${utteranceCounter.incrementAndGet()}"
+        activeUtteranceIds.add(id)
         pendingUtterances.incrementAndGet()
         val result = engine.speak(text, queueMode, null, id)
         if (result != TextToSpeech.SUCCESS) {
             Log.e(TAG, "TTS speak failed (result=$result) for: '$text'")
-            pendingUtterances.decrementAndGet()
+            completeUtterance(id)
         } else {
             Log.d(TAG, "TTS queued (mode=${if (queueMode == TextToSpeech.QUEUE_ADD) "ADD" else "FLUSH"}): '$text'")
+        }
+    }
+
+    private fun resetPendingUtterances() {
+        activeUtteranceIds.clear()
+        pendingUtterances.set(0)
+    }
+
+    private fun completeUtterance(utteranceId: String?) {
+        if (utteranceId == null || !activeUtteranceIds.remove(utteranceId)) {
+            Log.d(TAG, "Ignoring stale TTS callback for utterance: $utteranceId")
+            return
+        }
+
+        val remaining = pendingUtterances.decrementAndGet().coerceAtLeast(0)
+        if (remaining <= 0) {
+            pendingUtterances.set(0)
+        }
+
+        if (remaining <= 0 && inputComplete.get()) {
+            Log.d(TAG, "All utterances complete and input marked done, firing onAllComplete")
+            onAllComplete()
         }
     }
 

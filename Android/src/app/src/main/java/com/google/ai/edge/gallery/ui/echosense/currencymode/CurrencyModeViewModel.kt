@@ -1,16 +1,8 @@
 package com.google.ai.edge.gallery.ui.echosense.currencymode
 
 import android.app.Application
-import android.util.Log
-import androidx.camera.core.ImageProxy
-import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseBaseViewModel
-import com.google.ai.edge.gallery.ui.echosense.GeminiHelper
-import com.google.ai.edge.gallery.ui.home.AppSettings
-import com.google.ai.edge.gallery.ui.home.LlmResponseStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -19,70 +11,6 @@ class CurrencyModeViewModel @Inject constructor(
 ) : EchoSenseBaseViewModel(application) {
 
     override val supportsCollisionAvoidance: Boolean = false
-
-    /**
-     * Override analyzeImage to try Gemini first when available.
-     * If Gemini fails or is not configured, falls back to on-device LLM.
-     */
-    override fun analyzeImage(imageProxy: ImageProxy) {
-        if (!_isProcessing.value || _isAnalyzing.value) {
-            imageProxy.close()
-            return
-        }
-
-        if (!GeminiHelper.isAvailable()) {
-            // No Gemini key — use normal LLM path
-            super.analyzeImage(imageProxy)
-            return
-        }
-
-        // Convert ImageProxy to Bitmap (same as base class)
-        val bitmap = try {
-            val srcBitmap = imageProxyToBitmap(imageProxy)
-            if (srcBitmap == null) {
-                imageProxy.close()
-                super.analyzeImage(imageProxy)
-                return
-            }
-            val rotation = try { imageProxy.imageInfo.rotationDegrees } catch (_: Exception) { 0 }
-            val result = rotateBitmapIfNeeded(srcBitmap, rotation)
-            imageProxy.close()
-            scaleBitmapToMaxSize(result, LLM_MAX_IMAGE_SIZE)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating bitmap", e)
-            imageProxy.close()
-            return
-        }
-
-        // Try Gemini first, fall back to LLM
-        _isAnalyzing.value = true
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val isVerbose = AppSettings.llmResponseStyle.value == LlmResponseStyle.VERBOSE
-                val prompt = getAnalysisPrompt(customPrompt = null, isVerbose = isVerbose)
-
-                Log.d(TAG, "Trying Gemini for currency identification...")
-                _activeModelName.value = "Gemini 3 Flash"
-                val geminiResult = GeminiHelper.analyzeImage(bitmap, prompt)
-
-                if (geminiResult.isNotBlank()) {
-                    Log.d(TAG, "Gemini currency result: $geminiResult")
-                    _isAnalyzing.value = false
-                    _objectDescription.value = geminiResult
-                    speakText(geminiResult)
-                    return@launch
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Gemini currency identification failed: ${e.message}")
-            }
-
-            // Fall back to on-device LLM
-            Log.d(TAG, "Falling back to LLM for currency identification")
-            _activeModelName.value = "Gemma 3n"
-            _isAnalyzing.value = false
-            analyzeBitmap(bitmap)
-        }
-    }
 
     override fun getAnalysisPrompt(customPrompt: String?, isVerbose: Boolean): String {
         // Core identification instructions shared by both modes.
@@ -143,4 +71,3 @@ class CurrencyModeViewModel @Inject constructor(
         private const val TAG = "CurrencyModeVM"
     }
 }
-

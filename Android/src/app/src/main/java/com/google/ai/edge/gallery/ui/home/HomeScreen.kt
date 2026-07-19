@@ -65,6 +65,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -82,6 +83,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,6 +121,7 @@ import com.google.ai.edge.gallery.data.CategoryInfo
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.DEFAULT_TEMPERATURE
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.firebaseAnalytics
 import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.ui.common.RevealingText
@@ -127,6 +130,7 @@ import com.google.ai.edge.gallery.ui.common.TaskIcon
 import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
+import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_ID
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
 import com.google.ai.edge.gallery.ui.theme.homePageTitleStyle
@@ -187,6 +191,9 @@ fun HomeScreen(
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val context = LocalContext.current
+  // Offer setup once per app session whenever the on-device model is absent. Keeping "Not Now"
+  // out of persistent/restored preferences prevents backup data from suppressing setup forever.
+  var showModelDownloadPrompt by rememberSaveable { mutableStateOf(true) }
 
   val tasks = uiState.tasks
   val categoryMap: Map<String, CategoryInfo> =
@@ -577,10 +584,65 @@ fun HomeScreen(
     )
   }
 
-  // Allowlist error is handled non-blocking - the app works with bundled models only
+  val modelTask = tasks.firstOrNull { task -> task.models.any { it.name == ECHOSENSE_MODEL_ID } }
+  val onboardingModel = modelTask?.models?.firstOrNull { it.name == ECHOSENSE_MODEL_ID }
+  val onboardingStatus = onboardingModel?.let { uiState.modelDownloadStatus[it.name] }
+  LaunchedEffect(onboardingStatus?.status) {
+    if (onboardingStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
+      showModelDownloadPrompt = false
+    }
+  }
+  if (!showTosDialog && showModelDownloadPrompt && modelTask != null && onboardingModel != null &&
+    onboardingStatus?.status != ModelDownloadStatusType.SUCCEEDED
+  ) {
+    val isDownloading = onboardingStatus?.status == ModelDownloadStatusType.IN_PROGRESS
+    AlertDialog(
+      onDismissRequest = {
+        if (!isDownloading) {
+          showModelDownloadPrompt = false
+        }
+      },
+      title = { Text("Download On-Device AI") },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Text(
+            "EchoSense uses a one-time 3.4 GB download for private, on-device visual assistance. No account is required."
+          )
+          if (isDownloading) {
+            val progress =
+              if (onboardingStatus.totalBytes > 0) {
+                onboardingStatus.receivedBytes.toFloat() / onboardingStatus.totalBytes.toFloat()
+              } else 0f
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            Text("Downloading ${(progress * 100).toInt()}%")
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            if (isDownloading) {
+              showModelDownloadPrompt = false
+            } else {
+              modelManagerViewModel.downloadModel(modelTask, onboardingModel)
+            }
+          }
+        ) { Text(if (isDownloading) "Continue in Background" else "Download Model — 3.4 GB") }
+      },
+      dismissButton = {
+        if (!isDownloading) {
+          TextButton(onClick = {
+            showModelDownloadPrompt = false
+          }) { Text("Not Now") }
+        }
+      },
+    )
+  }
+
+  // Catalog errors are non-blocking; cached model metadata remains available.
   LaunchedEffect(uiState.loadingModelAllowlistError) {
     if (uiState.loadingModelAllowlistError.isNotEmpty()) {
-      snackbarHostState.showSnackbar("Using bundled models only (offline mode)")
+      snackbarHostState.showSnackbar("Using cached model information (offline mode)")
       modelManagerViewModel.clearLoadModelAllowlistError()
     }
   }

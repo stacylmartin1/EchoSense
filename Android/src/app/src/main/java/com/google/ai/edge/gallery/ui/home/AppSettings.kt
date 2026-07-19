@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.home
 
+import android.content.Context
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,17 @@ import kotlinx.coroutines.flow.StateFlow
 enum class LlmResponseStyle {
   CONCISE,
   VERBOSE,
+}
+
+enum class OnlineProvider(val displayName: String, val storageValue: String) {
+  GEMINI("Gemini", "gemini"),
+  OPENAI("OpenAI", "openai"),
+}
+
+enum class OnlineUsageMode(val displayName: String, val storageValue: String) {
+  ASK("Ask before use", "ask"),
+  FALLBACK("Automatic fallback", "fallback"),
+  PREFER_ONLINE("Prefer online", "prefer_online"),
 }
 
 object AppSettings {
@@ -35,6 +47,10 @@ object AppSettings {
   val showDebugOverlay: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
   val geminiApiKey: MutableStateFlow<String> = MutableStateFlow("")
+  val onlineProvider: MutableStateFlow<OnlineProvider> = MutableStateFlow(OnlineProvider.GEMINI)
+  val onlineUsageMode: MutableStateFlow<OnlineUsageMode> = MutableStateFlow(OnlineUsageMode.ASK)
+  val onlineConsentGranted: MutableStateFlow<Boolean> = MutableStateFlow(false)
+  val cloudPromptRequested: MutableStateFlow<Boolean> = MutableStateFlow(false)
   val ttsVoiceName: MutableStateFlow<String> = MutableStateFlow("")
 
   fun setLlmResponseStyle(style: LlmResponseStyle) {
@@ -53,25 +69,35 @@ object AppSettings {
     showDebugOverlay.value = enabled
   }
 
-  fun setGeminiApiKey(key: String) {
-    geminiApiKey.value = key
-  }
-
   fun setTtsVoiceName(name: String) {
     ttsVoiceName.value = name
   }
 
-  fun loadFrom(repository: DataStoreRepository) {
+  fun loadFrom(repository: DataStoreRepository, context: Context) {
     val settings = repository.readEchoSenseSettings()
     videoPreviewEnabled.value = settings.videoPreviewEnabled
     textOverlayEnabled.value = settings.textOverlayEnabled
     showDebugOverlay.value = settings.showDebugOverlay
-    geminiApiKey.value = settings.geminiApiKey ?: ""
+    var secureKey = CloudCredentialStore.load(context)
+    val legacyKey = settings.geminiApiKey.orEmpty()
+    if (secureKey.isEmpty() && legacyKey.isNotEmpty()) {
+      CloudCredentialStore.save(context, legacyKey)
+      secureKey = legacyKey
+    }
+    geminiApiKey.value = secureKey
+    onlineProvider.value =
+      OnlineProvider.entries.firstOrNull { it.storageValue == settings.onlineProvider }
+        ?: OnlineProvider.GEMINI
+    onlineUsageMode.value =
+      OnlineUsageMode.entries.firstOrNull { it.storageValue == settings.onlineUsageMode }
+        ?: OnlineUsageMode.ASK
+    onlineConsentGranted.value = settings.onlineConsentGranted
     ttsVoiceName.value = settings.ttsVoiceName ?: ""
     llmResponseStyle.value = when (settings.llmResponseStyle) {
       "verbose" -> LlmResponseStyle.VERBOSE
       else -> LlmResponseStyle.CONCISE
     }
+    if (legacyKey.isNotEmpty()) persistTo(repository)
   }
 
   fun persistTo(repository: DataStoreRepository) {
@@ -82,10 +108,58 @@ object AppSettings {
         LlmResponseStyle.CONCISE -> "concise"
         LlmResponseStyle.VERBOSE -> "verbose"
       },
-      geminiApiKey = geminiApiKey.value,
+      geminiApiKey = "",
       showDebugOverlay = showDebugOverlay.value,
-      ttsVoiceName = ttsVoiceName.value
+      ttsVoiceName = ttsVoiceName.value,
+      onlineProvider = onlineProvider.value.storageValue,
+      onlineUsageMode = onlineUsageMode.value.storageValue,
+      onlineConsentGranted = onlineConsentGranted.value,
     )
+  }
+
+  fun isOnlineConnected(): Boolean = geminiApiKey.value.isNotBlank()
+
+  fun maskedOnlineKey(): String =
+    if (geminiApiKey.value.isBlank()) "" else "••••${geminiApiKey.value.takeLast(4)}"
+
+  fun saveOnlineConnection(
+    context: Context,
+    provider: OnlineProvider,
+    apiKey: String,
+    usageMode: OnlineUsageMode,
+  ) {
+    val normalized = apiKey.trim()
+    require(normalized.isNotEmpty()) { "API key is required" }
+    CloudCredentialStore.save(context, normalized)
+    geminiApiKey.value = normalized
+    onlineProvider.value = provider
+    onlineUsageMode.value = usageMode
+    if (usageMode != OnlineUsageMode.ASK) onlineConsentGranted.value = true
+    dismissOnlinePrompt(context)
+  }
+
+  fun removeOnlineConnection(context: Context) {
+    CloudCredentialStore.clear(context)
+    geminiApiKey.value = ""
+    onlineProvider.value = OnlineProvider.GEMINI
+    onlineUsageMode.value = OnlineUsageMode.ASK
+    onlineConsentGranted.value = false
+  }
+
+  fun recordSuccessfulLocalAnalysis(context: Context) {
+    if (isOnlineConnected()) return
+    val prefs = context.getSharedPreferences("online_analysis_onboarding", Context.MODE_PRIVATE)
+    if (!prefs.getBoolean("dismissed", false)) cloudPromptRequested.value = true
+  }
+
+  fun beginOnlineSetup() {
+    cloudPromptRequested.value = false
+  }
+
+  fun dismissOnlinePrompt(context: Context) {
+    cloudPromptRequested.value = false
+    context.getSharedPreferences("online_analysis_onboarding", Context.MODE_PRIVATE)
+      .edit().putBoolean("dismissed", true).apply()
   }
 
   fun observeLlmResponseStyle(): StateFlow<LlmResponseStyle> = llmResponseStyle

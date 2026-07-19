@@ -23,7 +23,6 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.protobuf)
   alias(libs.plugins.hilt.application)
-  alias(libs.plugins.oss.licenses)
   kotlin("kapt")
 }
 
@@ -40,10 +39,6 @@ android {
     ndk {
       abiFilters.add("arm64-v8a")
     }
-    // Needed for HuggingFace auth workflows.
-    // Use the scheme of the "Redirect URLs" in HuggingFace app.
-    manifestPlaceholders["appAuthRedirectScheme"] =
-        "REPLACE_WITH_YOUR_REDIRECT_SCHEME_IN_HUGGINGFACE_APP"
     manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -71,7 +66,7 @@ android {
 
   androidResources {
     // Store .task assets uncompressed to enable fast FileDescriptor access and faster copy
-    noCompress += setOf("task", "tflite", "litertlm", "traineddata")
+    noCompress += setOf("task", "tflite", "traineddata")
   }
 }
 
@@ -94,6 +89,7 @@ dependencies {
   implementation(libs.androidx.lifecycle.process)
   implementation(libs.androidx.security.crypto)
   implementation(libs.androidx.webkit)
+  implementation(libs.androidx.browser)
   implementation(libs.litertlm)
   implementation(libs.commonmark)
   implementation(libs.richtext)
@@ -105,12 +101,10 @@ dependencies {
   implementation(libs.camerax.camera2)
   implementation(libs.camerax.lifecycle)
   implementation(libs.camerax.view)
-  implementation(libs.openid.appauth)
   implementation(libs.androidx.splashscreen)
   implementation(libs.protobuf.javalite)
   implementation(libs.hilt.android)
   implementation(libs.hilt.navigation.compose)
-  implementation(libs.play.services.oss.licenses)
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.analytics)
   implementation(libs.androidx.exifinterface)
@@ -133,6 +127,19 @@ dependencies {
   debugImplementation(libs.androidx.ui.tooling)
   debugImplementation(libs.androidx.ui.test.manifest)
 }
+
+tasks.register("verifyNoBundledLlm") {
+  group = "verification"
+  description = "Fails if a LiteRT-LM model is accidentally packaged as an Android asset."
+  doLast {
+    val bundledModels = fileTree("src/main/assets") { include("**/*.litertlm") }.files
+    check(bundledModels.isEmpty()) {
+      "LLM files must be downloaded after installation, not bundled: $bundledModels"
+    }
+  }
+}
+
+tasks.named("preBuild").configure { dependsOn("verifyNoBundledLlm") }
 
 protobuf {
   protoc { artifact = "com.google.protobuf:protoc:4.26.1" }

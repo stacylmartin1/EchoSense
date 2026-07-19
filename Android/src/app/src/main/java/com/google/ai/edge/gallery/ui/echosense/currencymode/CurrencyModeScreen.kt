@@ -15,23 +15,19 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -55,14 +51,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CurrencyModeScreen(
-    onNavigateUp: () -> Unit = {},
     viewModel: CurrencyModeViewModel,
     modelManagerViewModel: ModelManagerViewModel
 ) {
@@ -88,12 +85,19 @@ fun CurrencyModeScreen(
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasCameraPermission = it }
+    var permissionPromptResponded by remember { mutableStateOf(false) }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasCameraPermission = it
+        permissionPromptResponded = true
+    }
 
     var hasAudioPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
     }
-    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasAudioPermission = it }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasAudioPermission = it
+        permissionPromptResponded = true
+    }
 
     val isProcessing by viewModel.isProcessing.collectAsState()
     val isAnalyzing by viewModel.isAnalyzing.collectAsState()
@@ -114,6 +118,12 @@ fun CurrencyModeScreen(
     LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
     LaunchedEffect(isAnalyzing) { if (isAnalyzing) viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
     LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(permissionPromptResponded, hasCameraPermission, hasAudioPermission) {
+        if (permissionPromptResponded && hasCameraPermission && hasAudioPermission) {
+            delay(750)
+            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+        }
+    }
 
     DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
 
@@ -129,14 +139,6 @@ fun CurrencyModeScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Currency Identifier") },
-                navigationIcon = {
-                    IconButton(
-                        onClick = { viewModel.stopProcessing(); onNavigateUp() },
-                        modifier = Modifier.semantics { contentDescription = "Navigate back" }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
             )
         }
     ) { paddingValues ->
@@ -170,41 +172,39 @@ fun CurrencyModeScreen(
                 )
             }
 
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth()
-                    .semantics(mergeDescendants = true) {},
-                horizontalAlignment = Alignment.CenterHorizontally
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(
+                EchoSenseActionButton(
+                    icon = Icons.Default.CameraAlt,
+                    label = "Identify",
+                    contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Identifying currency" else "Capture and identify bank note",
                     onClick = {
                         viewModel.startProcessing()
                         viewModel.announceAction("Identifying currency")
                         captureAndAnalyze()
                     },
                     enabled = !isAnalyzing && isModelReady,
-                    modifier = Modifier.fillMaxWidth().height(60.dp).semantics {
-                        contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Identifying currency" else "Capture and identify bank note"
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                ) {
-                    Text(when { !isModelReady -> "Model Loading..."; isAnalyzing -> "Identifying..."; else -> "Capture Note" }, color = Color.White)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.semantics(mergeDescendants = true) {}
-                ) {
-                    Button(
-                        onClick = { if (hasAudioPermission) viewModel.startListening() else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Activate voice command" }
-                    ) { Text("Voice Command") }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Button(
-                        onClick = { viewModel.stopSpeaking(); viewModel.stopProcessing() },
-                        enabled = isProcessing || isAnalyzing,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Stop current analysis and speech" }
-                    ) { Text("Stop", color = Color.White) }
-                }
+                    highlighted = true,
+                    highlightColor = Color(0xFF4CAF50),
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.Mic,
+                    label = "Voice",
+                    contentDescription = "Activate voice command",
+                    onClick = { if (hasAudioPermission) viewModel.startListening() else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.Stop,
+                    label = "Stop",
+                    contentDescription = "Stop current analysis and speech",
+                    onClick = { viewModel.stopSpeaking(); viewModel.stopProcessing() },
+                    enabled = isProcessing || isAnalyzing,
+                    highlighted = true,
+                    highlightColor = Color(0xFFF44336),
+                )
             }
         }
     }

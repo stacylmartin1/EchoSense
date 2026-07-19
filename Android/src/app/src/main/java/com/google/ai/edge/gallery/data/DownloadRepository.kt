@@ -31,7 +31,9 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.work.Data
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkInfo
@@ -97,11 +99,12 @@ class DefaultDownloadRepository(
   ) {
     // Create input data.
     val builder = Data.Builder()
-    val totalBytes = model.totalBytes + model.extraDataFiles.sumOf { it.sizeInBytes }
+    val totalBytes = model.totalBytes
     val inputDataBuilder =
       builder
         .putString(KEY_MODEL_NAME, model.name)
         .putString(KEY_MODEL_URL, model.url)
+        .putString(KEY_MODEL_SHA256, model.sha256)
         .putString(KEY_MODEL_COMMIT_HASH, model.version)
         .putString(KEY_MODEL_DOWNLOAD_MODEL_DIR, model.normalizedName)
         .putString(KEY_MODEL_DOWNLOAD_FILE_NAME, model.downloadFileName)
@@ -117,15 +120,15 @@ class DefaultDownloadRepository(
           model.extraDataFiles.joinToString(",") { it.downloadFileName },
         )
     }
-    if (model.accessToken != null) {
-      inputDataBuilder.putString(KEY_MODEL_DOWNLOAD_ACCESS_TOKEN, model.accessToken)
-    }
     val inputData = inputDataBuilder.build()
 
     // Create worker request.
     val downloadWorkRequest =
       OneTimeWorkRequestBuilder<DownloadWorker>()
         .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        .setConstraints(
+          Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        )
         .setInputData(inputData)
         .addTag("$MODEL_NAME_TAG:${model.name}")
         .addTag("$TASK_ID_TAG:${task.id}")
@@ -134,7 +137,11 @@ class DefaultDownloadRepository(
     val workerId = downloadWorkRequest.id
 
     // Start!
-    workManager.enqueueUniqueWork(model.name, ExistingWorkPolicy.REPLACE, downloadWorkRequest)
+    workManager.enqueueUniqueWork(
+      "model:${model.normalizedName}:${model.version}",
+      ExistingWorkPolicy.KEEP,
+      downloadWorkRequest,
+    )
 
     // Observe progress.
     observerWorkerProgress(

@@ -16,10 +16,10 @@
 
 package com.google.ai.edge.gallery.ui.home
 
-import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -40,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
@@ -48,6 +49,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MultiChoiceSegmentedButtonRow
 import androidx.compose.material3.OutlinedButton
@@ -55,6 +57,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,12 +78,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.R
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
+import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_ID
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
@@ -89,6 +95,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
+import android.util.Log
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -96,6 +103,7 @@ import java.util.Locale
 import kotlin.math.min
 
 private val THEME_OPTIONS = listOf(Theme.THEME_AUTO, Theme.THEME_LIGHT, Theme.THEME_DARK)
+private const val SETTINGS_DIALOG_TAG = "SettingsDialog"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -109,22 +117,44 @@ fun SettingsDialog(
   val focusRequester = remember { FocusRequester() }
   val interactionSource = remember { MutableInteractionSource() }
   var showTos by remember { mutableStateOf(false) }
+  var showLicenses by remember { mutableStateOf(false) }
+  var showOnlineConnection by remember { mutableStateOf(false) }
   
   val context = LocalContext.current
+  val modelUiState by modelManagerViewModel.uiState.collectAsState()
+  val modelTask = modelUiState.tasks.firstOrNull { task ->
+    task.models.any { it.name == ECHOSENSE_MODEL_ID }
+  }
+  val onDeviceModel = modelTask?.models?.firstOrNull { it.name == ECHOSENSE_MODEL_ID }
+  val modelDownloadStatus = onDeviceModel?.let { modelUiState.modelDownloadStatus[it.name] }
   val coroutineScope = rememberCoroutineScope()
   var ttsVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
   var ttsTemp by remember { mutableStateOf<TextToSpeech?>(null) }
 
-  // Load voices securely
+  // Load voices exposed by the active Android TTS engine.
   androidx.compose.runtime.LaunchedEffect(Unit) {
-      ttsTemp = TextToSpeech(context) { status ->
-          if (status == TextToSpeech.SUCCESS) {
-              val allVoices = ttsTemp?.voices?.toList() ?: emptyList()
-              ttsVoices = allVoices.filter {
-                  it.locale.language == "en" && !it.isNetworkConnectionRequired
-              }.sortedBy { it.name }
+      val appContext = context.applicationContext
+      var createdTts: TextToSpeech? = null
+      createdTts = TextToSpeech(appContext) { status ->
+          if (status != TextToSpeech.SUCCESS) {
+              Log.w(SETTINGS_DIALOG_TAG, "TTS init failed while loading voices: $status")
+              return@TextToSpeech
+          }
+
+          android.os.Handler(android.os.Looper.getMainLooper()).post {
+              val engine = ttsTemp ?: createdTts ?: return@post
+              val allVoices = engine.voices?.toList().orEmpty()
+              ttsVoices = allVoices
+                  .filter(::isSelectableTtsVoice)
+                  .distinctBy { it.name }
+                  .sortedWith(ttsVoiceComparator(Locale.getDefault()))
+              Log.d(
+                  SETTINGS_DIALOG_TAG,
+                  "Loaded ${ttsVoices.size} selectable TTS voices from ${allVoices.size} engine voices"
+              )
           }
       }
+      ttsTemp = createdTts
   }
 
   // Cleanup TTS when dialog closes
@@ -216,6 +246,107 @@ fun SettingsDialog(
           val textOverlayEnabled by AppSettings.textOverlayEnabled.collectAsState()
           val responseStyle by AppSettings.llmResponseStyle.collectAsState()
 
+          Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            Text(
+              "On-Device AI Model",
+              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+            )
+            if (modelTask == null || onDeviceModel == null) {
+              Text(
+                "Model information is temporarily unavailable.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+            } else {
+              val status = modelDownloadStatus?.status ?: ModelDownloadStatusType.NOT_DOWNLOADED
+              val modelSizeGb = onDeviceModel.totalBytes.toDouble() / 1_000_000_000.0
+              Text(
+                onDeviceModel.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+              )
+              Text(
+                when (status) {
+                  ModelDownloadStatusType.SUCCEEDED -> "Downloaded and ready"
+                  ModelDownloadStatusType.IN_PROGRESS -> "Downloading"
+                  ModelDownloadStatusType.PARTIALLY_DOWNLOADED -> "Download paused"
+                  ModelDownloadStatusType.UNZIPPING -> "Finishing installation"
+                  ModelDownloadStatusType.FAILED -> "Download failed"
+                  ModelDownloadStatusType.NOT_DOWNLOADED -> "Not downloaded · %.1f GB".format(modelSizeGb)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+
+              if (status == ModelDownloadStatusType.IN_PROGRESS) {
+                val progress =
+                  if ((modelDownloadStatus?.totalBytes ?: 0L) > 0L) {
+                    modelDownloadStatus!!.receivedBytes.toFloat() /
+                      modelDownloadStatus.totalBytes.toFloat()
+                  } else 0f
+                LinearProgressIndicator(
+                  progress = { progress.coerceIn(0f, 1f) },
+                  modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                  "${(progress * 100).toInt()}%",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.primary,
+                )
+              }
+
+              if (status == ModelDownloadStatusType.FAILED &&
+                !modelDownloadStatus?.errorMessage.isNullOrBlank()
+              ) {
+                Text(
+                  modelDownloadStatus?.errorMessage.orEmpty(),
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.error,
+                )
+              }
+
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                when (status) {
+                  ModelDownloadStatusType.SUCCEEDED -> {
+                    OutlinedButton(
+                      onClick = { modelManagerViewModel.deleteModel(modelTask, onDeviceModel) }
+                    ) { Text("Delete Model") }
+                  }
+                  ModelDownloadStatusType.IN_PROGRESS,
+                  ModelDownloadStatusType.UNZIPPING -> {
+                    OutlinedButton(
+                      onClick = {
+                        modelManagerViewModel.cancelDownloadModel(modelTask, onDeviceModel)
+                      }
+                    ) { Text("Cancel Download") }
+                  }
+                  else -> {
+                    Button(
+                      onClick = { modelManagerViewModel.downloadModel(modelTask, onDeviceModel) }
+                    ) {
+                      Text(
+                        if (status == ModelDownloadStatusType.PARTIALLY_DOWNLOADED) {
+                          "Resume Download"
+                        } else {
+                          "Download Model"
+                        }
+                      )
+                    }
+                  }
+                }
+                TextButton(
+                  onClick = {
+                    context.startActivity(
+                      Intent(Intent.ACTION_VIEW, Uri.parse(onDeviceModel.licenseUrl))
+                    )
+                  }
+                ) { Text("License") }
+              }
+            }
+          }
+
           // Camera Preview toggle.
           Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
             Text(
@@ -267,36 +398,10 @@ fun SettingsDialog(
               )
             }
           }
-          
-          // Debug Overlay toggle.
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              "Debug Overlay",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            val showDebugOverlay by AppSettings.showDebugOverlay.collectAsState()
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Text(
-                "Show raw OCR/translation & model status",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-              Switch(
-                checked = showDebugOverlay,
-                onCheckedChange = {
-                  AppSettings.setShowDebugOverlay(it)
-                  modelManagerViewModel.saveEchoSenseSettings()
-                },
-              )
-            }
-          }
 
           // TTS Voice Settings
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+          if (ttsVoices.isNotEmpty()) {
+            Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
               Text(
                   "TTS Voice",
                   style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
@@ -316,9 +421,14 @@ fun SettingsDialog(
                   ) {
                       val currentName = ttsVoiceName.ifEmpty { "Default Voice" }
                       val displayName = ttsVoices.find { it.name == currentName }?.let { voice ->
-                           "${voice.locale.displayCountry} (${if (voice.name.contains("female", true)) "Female" else if (voice.name.contains("male", true)) "Male" else "Standard"})"
+                          ttsVoiceLabel(voice)
                       } ?: currentName
-                      Text(displayName, modifier = Modifier.weight(1f))
+                      Text(
+                          displayName,
+                          modifier = Modifier.weight(1f),
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                      )
                       ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                   }
 
@@ -335,9 +445,8 @@ fun SettingsDialog(
                           }
                       )
                       ttsVoices.forEach { voice ->
-                          val label = "${voice.locale.displayCountry} (${if (voice.name.contains("female", true)) "Female" else if (voice.name.contains("male", true)) "Male" else "Voice"})"
                           DropdownMenuItem(
-                              text = { Text(label) },
+                              text = { Text(ttsVoiceLabel(voice), maxLines = 2) },
                               onClick = {
                                   AppSettings.setTtsVoiceName(voice.name)
                                   modelManagerViewModel.saveEchoSenseSettings()
@@ -347,6 +456,7 @@ fun SettingsDialog(
                       }
                   }
               }
+            }
           }
 
           // Response Detail segmented button.
@@ -381,28 +491,26 @@ fun SettingsDialog(
 
 
 
-          // Gemini API Key management.
+          // Optional online analysis connection.
           Column(
             modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
             verticalArrangement = Arrangement.spacedBy(4.dp),
           ) {
             Text(
-              "Gemini API Key",
+              "Online Analysis",
               style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
             )
-            val geminiKey by AppSettings.geminiApiKey.collectAsState()
-            var geminiKeyInput by remember { mutableStateOf("") }
-            var geminiKeyFocused by remember { mutableStateOf(false) }
-            val geminiFocusRequester = remember { FocusRequester() }
-
-            if (geminiKey.isNotEmpty()) {
+            val onlineKey by AppSettings.geminiApiKey.collectAsState()
+            val onlineProvider by AppSettings.onlineProvider.collectAsState()
+            val onlineMode by AppSettings.onlineUsageMode.collectAsState()
+            if (onlineKey.isNotEmpty()) {
               Text(
-                geminiKey.take(8) + "..." + geminiKey.takeLast(4),
+                "${onlineProvider.displayName} ${AppSettings.maskedOnlineKey()}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
               Text(
-                "Online OCR and vision enabled",
+                onlineMode.displayName,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
               )
@@ -413,93 +521,28 @@ fun SettingsDialog(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
               Text(
-                "Get a free key at aistudio.google.com",
+                "Connect a provider for optional online scene analysis.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-              OutlinedButton(
-                onClick = {
-                  AppSettings.setGeminiApiKey("")
-                  modelManagerViewModel.saveEchoSenseSettings()
-                  geminiKeyInput = ""
-                },
-                enabled = geminiKey.isNotEmpty(),
-              ) {
-                Text("Clear")
-              }
-              val handleSaveGeminiKey = {
-                AppSettings.setGeminiApiKey(geminiKeyInput.trim())
-                modelManagerViewModel.saveEchoSenseSettings()
-                geminiKeyInput = ""
-                focusManager.clearFocus()
-              }
-              BasicTextField(
-                value = geminiKeyInput,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { handleSaveGeminiKey() }),
-                modifier =
-                  Modifier.fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .focusRequester(geminiFocusRequester)
-                    .onFocusChanged { geminiKeyFocused = it.isFocused },
-                onValueChange = { geminiKeyInput = it },
-                textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
-              ) { innerTextField ->
-                Box(
-                  modifier =
-                    Modifier.border(
-                        width = if (geminiKeyFocused) 2.dp else 1.dp,
-                        color =
-                          if (geminiKeyFocused) MaterialTheme.colorScheme.primary
-                          else MaterialTheme.colorScheme.outline,
-                        shape = CircleShape,
-                      )
-                      .height(40.dp),
-                  contentAlignment = Alignment.CenterStart,
-                ) {
-                  Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
-                      if (geminiKeyInput.isEmpty()) {
-                        Text(
-                          "Enter Gemini API key",
-                          color = MaterialTheme.colorScheme.onSurfaceVariant,
-                          style = MaterialTheme.typography.bodySmall,
-                        )
-                      }
-                      innerTextField()
-                    }
-                    if (geminiKeyInput.isNotEmpty()) {
-                      IconButton(modifier = Modifier.offset(x = 1.dp), onClick = handleSaveGeminiKey) {
-                        Icon(
-                          Icons.Rounded.CheckCircle,
-                          contentDescription = "Save Gemini API key",
-                        )
-                      }
-                    }
-                  }
-                }
-              }
+            OutlinedButton(onClick = { showOnlineConnection = true }) {
+              Text(if (onlineKey.isEmpty()) "Connect AI Provider" else "Manage Online Analysis")
             }
+            Text(
+              "Images are sent only when online analysis is used. Provider charges may apply.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
           }
 
           // Third party licenses.
           Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
             Text(
-              "Third-party libraries",
+              "Third-party licenses",
               style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
             )
-            OutlinedButton(
-              onClick = {
-                // Create an Intent to launch a license viewer that displays a list of
-                // third-party library names. Clicking a name will show its license content.
-                val intent = Intent(context, OssLicensesMenuActivity::class.java)
-                context.startActivity(intent)
-              }
-            ) {
+            OutlinedButton(onClick = { showLicenses = true }) {
               Text("View licenses")
             }
           }
@@ -510,7 +553,7 @@ fun SettingsDialog(
               stringResource(R.string.settings_dialog_tos_title),
               style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
             )
-            OutlinedButton(onClick = { showTos = true }) { Text("View Terms of Services") }
+            OutlinedButton(onClick = { showTos = true }) { Text("View terms and privacy") }
           }
         }
 
@@ -526,9 +569,119 @@ fun SettingsDialog(
     }
   }
 
+  if (showOnlineConnection) {
+    OnlineConnectionDialog(
+      modelManagerViewModel = modelManagerViewModel,
+      onDismiss = { showOnlineConnection = false },
+    )
+  }
+
   if (showTos) {
     TosDialog(onTosAccepted = { showTos = false }, viewingMode = true)
   }
+  if (showLicenses) {
+    ThirdPartyLicensesDialog(onDismiss = { showLicenses = false })
+  }
+}
+
+private data class LicenseNotice(
+  val name: String,
+  val license: String,
+  val notice: String,
+)
+
+private val THIRD_PARTY_LICENSE_NOTICES =
+  listOf(
+    LicenseNotice(
+      name = "Google AI Edge Gallery and EchoSense app code",
+      license = "Apache License 2.0",
+      notice = "The application code is based on Google AI Edge Gallery and EchoSense modifications. Copyright notices are retained in source files.",
+    ),
+    LicenseNotice(
+      name = "Gemma / Gemma 3n LiteRT-LM model asset",
+      license = "Gemma Terms of Use",
+      notice = "Downloaded .litertlm model files are subject to the Gemma Terms of Use at ai.google.dev/gemma/terms, including redistribution notice and prohibited-use requirements.",
+    ),
+    LicenseNotice(
+      name = "LiteRT-LM, TensorFlow Lite, and Google AI Edge runtimes",
+      license = "Apache License 2.0",
+      notice = "On-device model runtime components from Google AI Edge, LiteRT, and TensorFlow Lite are used for local inference.",
+    ),
+    LicenseNotice(
+      name = "MediaPipe Tasks and EfficientDet Lite object detector",
+      license = "Apache License 2.0",
+      notice = "The collision-avoidance detector uses MediaPipe Tasks with an EfficientDet Lite model asset.",
+    ),
+    LicenseNotice(
+      name = "Ultralytics YOLO11s model asset",
+      license = "AGPL-3.0 or commercial Ultralytics license",
+      notice = "The bundled yolo11s_float16.tflite asset originates from the Ultralytics YOLO model family. Verify commercial licensing before distributing builds that include or use this asset.",
+    ),
+    LicenseNotice(
+      name = "ML Kit OCR, translation, and language identification",
+      license = "Google ML Kit / Google APIs terms",
+      notice = "Google ML Kit components provide text recognition, translation, and language identification. Some models may be provided by Google Play services or bundled SDK artifacts.",
+    ),
+    LicenseNotice(
+      name = "Tesseract OCR, Tesseract4Android, and tessdata language files",
+      license = "Apache License 2.0",
+      notice = "Tesseract is used as an offline OCR fallback. Bundled tessdata files include Thai, Khmer, Lao, Burmese, and Arabic recognition data.",
+    ),
+    LicenseNotice(
+      name = "AndroidX, Jetpack Compose, CameraX, Hilt, Protobuf, PDFBox Android, CommonMark, RichText, AppAuth, Firebase, and related libraries",
+      license = "Apache License 2.0, BSD, MIT, or similar permissive licenses",
+      notice = "The app uses standard Android and JVM open-source libraries. Dependency-level license generation is summarized here because the Google OSS Licenses debug artifact currently generates an empty placeholder list.",
+    ),
+    LicenseNotice(
+      name = "Android platform, camera, audio, and device drivers",
+      license = "Device and OS vendor licenses",
+      notice = "Android framework services, system TTS, camera stacks, audio stacks, GPU delegates, and hardware drivers are provided by the OS or device vendor and are not redistributed by this app.",
+    ),
+  )
+
+@Composable
+private fun ThirdPartyLicensesDialog(onDismiss: () -> Unit) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    confirmButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Close")
+      }
+    },
+    title = {
+      Text("Third-party licenses")
+    },
+    text = {
+      Column(
+        modifier = Modifier.height(420.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+      ) {
+        Text(
+          "License notices for downloaded models, neural network assets, app code, and major runtime components.",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        THIRD_PARTY_LICENSE_NOTICES.forEach { notice ->
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+              notice.name,
+              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+            )
+            Text(
+              notice.license,
+              style = MaterialTheme.typography.labelMedium,
+              color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+              notice.notice,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+        }
+      }
+    },
+  )
 }
 
 private fun themeLabel(theme: Theme): String {
@@ -537,5 +690,38 @@ private fun themeLabel(theme: Theme): String {
     Theme.THEME_LIGHT -> "Light"
     Theme.THEME_DARK -> "Dark"
     else -> "Unknown"
+  }
+}
+
+private fun isSelectableTtsVoice(voice: Voice): Boolean {
+  val features = voice.features.orEmpty()
+  return TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in features
+}
+
+private fun ttsVoiceComparator(currentLocale: Locale): Comparator<Voice> {
+  return compareBy<Voice>(
+      { it.isNetworkConnectionRequired },
+      { if (it.locale.language == currentLocale.language) 0 else 1 },
+      { if (it.locale.language == Locale.ENGLISH.language) 0 else 1 },
+      { -it.quality },
+      { it.locale.displayName },
+      { it.name },
+  )
+}
+
+private fun ttsVoiceLabel(voice: Voice): String {
+  val localeName =
+    voice.locale.getDisplayName(Locale.getDefault()).ifBlank { voice.locale.toLanguageTag() }
+  val connection = if (voice.isNetworkConnectionRequired) "Network" else "Offline"
+  return "$localeName - $connection - ${ttsVoiceQualityLabel(voice.quality)}"
+}
+
+private fun ttsVoiceQualityLabel(quality: Int): String {
+  return when {
+    quality >= Voice.QUALITY_VERY_HIGH -> "Very high quality"
+    quality >= Voice.QUALITY_HIGH -> "High quality"
+    quality >= Voice.QUALITY_NORMAL -> "Standard quality"
+    quality >= Voice.QUALITY_LOW -> "Low quality"
+    else -> "Very low quality"
   }
 }

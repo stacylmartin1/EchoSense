@@ -30,10 +30,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -49,8 +45,6 @@ import com.google.ai.edge.gallery.ui.common.MarkdownText
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TosDialog(onTosAccepted: () -> Unit, viewingMode: Boolean = false) {
-  var viewFullTerms by remember { mutableStateOf(viewingMode) }
-
   Dialog(
     properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
     onDismissRequest = { if (viewingMode) onTosAccepted() },
@@ -70,13 +64,8 @@ fun TosDialog(onTosAccepted: () -> Unit, viewingMode: Boolean = false) {
         )
 
         Column(modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)) {
-          // Short content.
           MarkdownText(
-            "By using this app, you agree to the " +
-              "[Google Terms of Service](https://policies.google.com/terms?hl=en-US).\n\n" +
-              "To learn what information we collect and why, how we use it, " +
-              "and how to review and update it, please review the " +
-              "[Google Privacy Policy](https://policies.google.com/privacy?hl=en-US).",
+            ECHOSENSE_TERMS_AND_PRIVACY,
             smallFontSize = true,
             textColor = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp),
@@ -98,3 +87,43 @@ fun TosDialog(onTosAccepted: () -> Unit, viewingMode: Boolean = false) {
     }
   }
 }
+
+private val ECHOSENSE_TERMS_AND_PRIVACY =
+  """
+  ## Terms and safety notice
+
+  EchoSense provides experimental visual, document, translation, currency, and navigation assistance. The app can make mistakes, miss hazards, hallucinate descriptions, mistranslate text, misread documents, or identify currency incorrectly.
+
+  **Do not rely on EchoSense as your only source of safety-critical information.** Vision assistance and collision avoidance are not a substitute for a cane, guide dog, sighted assistance, mobility training, traffic signals, medical devices, emergency services, or your own judgment.
+
+  Do not rely on EchoSense for:
+
+  - personal safety, navigation safety, traffic decisions, obstacle avoidance, or emergency response;
+  - legal, medical, financial, immigration, insurance, tax, or other professional advice;
+  - legal document analysis, contract interpretation, official forms, or compliance decisions;
+  - monetary transactions, currency authenticity, prices, account numbers, checks, bills, or payment instructions;
+  - identity verification, security screening, access control, or law-enforcement decisions;
+  - medication labels, dosage instructions, allergens, hazardous materials, or health and safety warnings;
+  - any decision where an incorrect result could cause injury, loss, legal exposure, or property damage.
+
+  Always verify important information with a trusted person, official source, professional advisor, or dedicated safety tool. You are responsible for how you use the app and for any decisions you make based on its output.
+
+  ## Privacy notice
+
+  EchoSense is designed primarily for on-device processing. Camera frames, selected photos, selected documents, microphone input for voice commands, OCR text, translations, and model outputs are processed on your device when local models and local Android services are used.
+
+  The app may access the camera, microphone, files you choose, and downloaded or bundled model files only to provide the features you request. Camera preview and analysis frames are not intentionally saved by the app unless you explicitly choose files or platform components cache data as part of normal operation.
+
+  Some features may use Google or Android services:
+
+  - ML Kit OCR, language identification, and translation may use Google Play services or download language/model packs.
+  - If you connect and use an online AI provider, the images, document text, prompts, and related content needed for that request are sent directly to the selected provider and handled under that provider's terms. Provider charges may apply.
+  - Android system text-to-speech, speech recognition, camera, audio, and accessibility services are provided by the device or OS vendor and may have their own settings and privacy behavior.
+  - App builds that include analytics or crash reporting may collect basic diagnostics, crash, performance, or usage information.
+
+  Do not scan highly sensitive documents, credentials, financial information, medical information, private keys, or other confidential content unless you understand which local and online services are active and accept the risk.
+
+  ## No warranty
+
+  EchoSense is provided as-is, without warranties of accuracy, availability, fitness for a particular purpose, or non-infringement. To the maximum extent permitted by law, the app developers and contributors are not liable for losses or damages arising from your use of the app or reliance on its outputs.
+  """.trimIndent()

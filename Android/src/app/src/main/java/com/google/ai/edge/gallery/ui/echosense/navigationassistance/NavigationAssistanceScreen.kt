@@ -15,30 +15,28 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -64,14 +62,16 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
+import com.google.ai.edge.gallery.ui.home.OnlineConnectionDialog
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NavigationAssistanceScreen(
-    onNavigateUp: () -> Unit = {},
     viewModel: NavigationAssistanceViewModel,
     modelManagerViewModel: ModelManagerViewModel
 ) {
@@ -103,9 +103,13 @@ fun NavigationAssistanceScreen(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var permissionPromptResponded by remember { mutableStateOf(false) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted -> hasCameraPermission = granted }
+        onResult = { granted ->
+            hasCameraPermission = granted
+            permissionPromptResponded = true
+        }
     )
 
     var hasAudioPermission by remember {
@@ -115,7 +119,10 @@ fun NavigationAssistanceScreen(
     }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted -> hasAudioPermission = granted }
+        onResult = { granted ->
+            hasAudioPermission = granted
+            permissionPromptResponded = true
+        }
     )
 
     // Original state flows
@@ -123,6 +130,12 @@ fun NavigationAssistanceScreen(
     val isAnalyzing by viewModel.isAnalyzing.collectAsState()
     val objectDescription by viewModel.objectDescription.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
+    val onlineKey by AppSettings.geminiApiKey.collectAsState()
+    val onlineProvider by AppSettings.onlineProvider.collectAsState()
+    val onlineConsentGranted by AppSettings.onlineConsentGranted.collectAsState()
+    val cloudPromptRequested by AppSettings.cloudPromptRequested.collectAsState()
+    var showOnlineConnection by remember { mutableStateOf(false) }
+    var confirmOnlineAnalysis by remember { mutableStateOf(false) }
 
     val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
@@ -143,6 +156,12 @@ fun NavigationAssistanceScreen(
     LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
     LaunchedEffect(isAnalyzing) { if (isAnalyzing) viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
     LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(permissionPromptResponded, hasCameraPermission, hasAudioPermission) {
+        if (permissionPromptResponded && hasCameraPermission && hasAudioPermission) {
+            delay(750)
+            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+        }
+    }
 
     DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
 
@@ -158,29 +177,6 @@ fun NavigationAssistanceScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Navigation Assistance") },
-                navigationIcon = {
-                    IconButton(
-                        onClick = { viewModel.stopProcessing(); onNavigateUp() },
-                        modifier = Modifier.semantics { contentDescription = "Navigate back" }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Toggle Collision Avoidance
-                    IconButton(
-                        onClick = { viewModel.toggleCollisionAvoidance() },
-                        modifier = Modifier.semantics {
-                            contentDescription = if (isCollisionAvoidanceEnabled) "Disable collision avoidance" else "Enable collision avoidance"
-                        }
-                    ) {
-                        Icon(
-                            imageVector = if (isCollisionAvoidanceEnabled) Icons.Filled.Shield else Icons.Outlined.Shield,
-                            contentDescription = null,
-                            tint = if (isCollisionAvoidanceEnabled) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
             )
         }
     ) { paddingValues ->
@@ -266,66 +262,107 @@ fun NavigationAssistanceScreen(
                 )
             }
 
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth()
-                    .semantics(mergeDescendants = true) {},
-                horizontalAlignment = Alignment.CenterHorizontally
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Collision Avoidance toggle button
-                Button(
+                EchoSenseActionButton(
+                    icon = if (isCollisionAvoidanceEnabled) Icons.Filled.Shield else Icons.Outlined.Shield,
+                    label = "Safety",
+                    contentDescription = if (isCollisionAvoidanceEnabled) "Disable collision avoidance" else "Enable collision avoidance",
                     onClick = { viewModel.toggleCollisionAvoidance() },
-                    modifier = Modifier.fillMaxWidth().height(52.dp).semantics {
-                        contentDescription = if (isCollisionAvoidanceEnabled) "Disable collision avoidance" else "Enable collision avoidance"
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isCollisionAvoidanceEnabled) Color(0xFFFF9800) else Color(0xFF757575)
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (isCollisionAvoidanceEnabled) Icons.Filled.Shield else Icons.Outlined.Shield,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(
-                        text = if (isCollisionAvoidanceEnabled) "Collision Avoidance: ON" else "Collision Avoidance: OFF",
-                        color = Color.White
+                    highlighted = isCollisionAvoidanceEnabled,
+                    highlightColor = Color(0xFFFF9800),
+                )
+                if (onlineKey.isNotBlank()) {
+                    EchoSenseActionButton(
+                        icon = Icons.Default.Cloud,
+                        label = "Online",
+                        contentDescription = "Analyze scene online with ${onlineProvider.displayName}",
+                        onClick = {
+                            if (onlineConsentGranted) {
+                                viewModel.startOnlineProcessing()
+                                captureAndAnalyze()
+                            } else {
+                                confirmOnlineAnalysis = true
+                            }
+                        },
+                        enabled = !isAnalyzing,
                     )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
+                EchoSenseActionButton(
+                    icon = Icons.Default.CameraAlt,
+                    label = "Analyze",
+                    contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Analyzing scene" else "Analyze scene",
                     onClick = { viewModel.startProcessing(); captureAndAnalyze() },
                     enabled = !isAnalyzing && isModelReady,
-                    modifier = Modifier.fillMaxWidth().height(60.dp).semantics { contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Analyzing scene" else "Analyze scene" },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                ) {
-                    Text(
-                        when {
-                            !isModelReady -> "Model Loading..."
-                            isAnalyzing -> "Analyzing..."
-                            else -> "Analyze Scene"
-                        },
-                        color = Color.White
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.semantics(mergeDescendants = true) {}
-                ) {
-                    Button(
-                        onClick = { if (hasAudioPermission) viewModel.startListening() else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Activate voice command" }
-                    ) { Text("Voice Command") }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Button(
-                        onClick = { viewModel.stopSpeaking() },
-                        enabled = isProcessing,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = "Stop current analysis and speech" }
-                    ) { Text("Stop", color = Color.White) }
-                }
+                    highlighted = true,
+                    highlightColor = Color(0xFF4CAF50),
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.Mic,
+                    label = "Voice",
+                    contentDescription = "Activate voice command",
+                    onClick = { if (hasAudioPermission) viewModel.startListening() else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.Stop,
+                    label = "Stop",
+                    contentDescription = "Stop current analysis and speech",
+                    onClick = { viewModel.stopSpeaking() },
+                    enabled = isProcessing,
+                    highlighted = true,
+                    highlightColor = Color(0xFFF44336),
+                )
             }
         }
+    }
+
+    if (cloudPromptRequested) {
+        AlertDialog(
+            onDismissRequest = { AppSettings.dismissOnlinePrompt(context) },
+            title = { Text("Optional Online Analysis") },
+            text = { Text("Connect your own AI provider for optional online scene analysis. Your key stays on this device.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppSettings.beginOnlineSetup()
+                    showOnlineConnection = true
+                }) { Text("Connect") }
+            },
+            dismissButton = {
+                TextButton(onClick = { AppSettings.dismissOnlinePrompt(context) }) { Text("Not now") }
+            },
+        )
+    }
+
+    if (confirmOnlineAnalysis) {
+        AlertDialog(
+            onDismissRequest = { confirmOnlineAnalysis = false },
+            title = { Text("Send this image to ${onlineProvider.displayName}?") },
+            text = { Text("The current image and prompt will be sent to the provider and may incur charges on your provider account.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmOnlineAnalysis = false
+                    AppSettings.onlineConsentGranted.value = true
+                    modelManagerViewModel.saveEchoSenseSettings()
+                    viewModel.startOnlineProcessing()
+                    captureAndAnalyze()
+                }) { Text("Send") }
+            },
+            dismissButton = { TextButton(onClick = { confirmOnlineAnalysis = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showOnlineConnection) {
+        OnlineConnectionDialog(
+            modelManagerViewModel = modelManagerViewModel,
+            onDismiss = { showOnlineConnection = false },
+        )
     }
 }
 

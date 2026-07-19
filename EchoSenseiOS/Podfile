@@ -1,0 +1,9 @@
+platform :ios, '17.0'
+
+target 'EchoSenseiOS' do
+  use_frameworks!
+end
+
+target 'EchoSenseGenAI' do
+  use_frameworks!
+end

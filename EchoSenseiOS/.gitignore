@@ -1,0 +1,9 @@
+Pods/
+*.xcworkspace
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+EchoSenseiOS/Assets/Models/*.bin
+EchoSenseiOS/Assets/Models/*.litertlm
+

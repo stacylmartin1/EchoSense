@@ -1,0 +1,690 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		041BFFB32FFCC0CF00FB8BA3 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 041BFFB22FFCC0CF00FB8BA3 /* LiteRTLM */; };
+		8B1CE075551ABFDFDEFA52CA /* Pods_EchoSenseiOS.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DE7C5FC9E65C75B6F9CC460 /* Pods_EchoSenseiOS.framework */; };
+		AA1DB8C8B8861BE759D107FA /* Pods_EchoSenseGenAI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C291FF4E39ACA1D393471BFC /* Pods_EchoSenseGenAI.framework */; };
+		B00000000000000000000001 /* App/EchoSenseiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* App/EchoSenseiOSApp.swift */; };
+		B00000000000000000000002 /* Models/AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Models/AppSettings.swift */; };
+		B00000000000000000000003 /* Models/EchoSenseFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* Models/EchoSenseFeature.swift */; };
+		B00000000000000000000004 /* Models/ProximityTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* Models/ProximityTypes.swift */; };
+		B00000000000000000000005 /* Models/Prompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* Models/Prompts.swift */; };
+		B00000000000000000000006 /* Services/Camera/CameraFrameSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* Services/Camera/CameraFrameSource.swift */; };
+		B00000000000000000000007 /* Services/OCR/VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* Services/OCR/VisionOCRService.swift */; };
+		B00000000000000000000008 /* Services/Speech/SpeechOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* Services/Speech/SpeechOutputService.swift */; };
+		B00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift */; };
+		B00000000000000000000045 /* Services/Speech/VoiceCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* Services/Speech/VoiceCommandService.swift */; };
+		B00000000000000000000046 /* Models/ModelManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* Models/ModelManifest.swift */; };
+		B00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift */; };
+		B00000000000000000000048 /* Views/ModelSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000048 /* Views/ModelSetupView.swift */; };
+		B00000000000000000000009 /* Services/Translation/TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* Services/Translation/TranslationService.swift */; };
+		B0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift */; };
+		B0000000000000000000000B /* Services/Inference/LocalLLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* Services/Inference/LocalLLMClient.swift */; };
+		B0000000000000000000000C /* Services/Inference/CloudVisionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000C /* Services/Inference/CloudVisionClient.swift */; };
+		B0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift */; };
+		B0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift */; };
+		B0000000000000000000000F /* Views/RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000F /* Views/RootView.swift */; };
+		B00000000000000000000010 /* Views/HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* Views/HomeView.swift */; };
+		B00000000000000000000011 /* Views/FeatureSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* Views/FeatureSessionView.swift */; };
+		B00000000000000000000012 /* Views/CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* Views/CameraPreviewView.swift */; };
+		B00000000000000000000013 /* Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* Views/SettingsView.swift */; };
+		B00000000000000000000014 /* Views/TermsPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Views/TermsPrivacyView.swift */; };
+		B00000000000000000000015 /* Views/LicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* Views/LicensesView.swift */; };
+		B00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* Assets.xcassets */; };
+		B00000000000000000000098 /* Resources/yolov8n.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000098 /* Resources/yolov8n.mlpackage */; };
+		B00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel */; };
+		B10000000000000000000001 /* EchoSenseGenAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* EchoSenseGenAI.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		041BFFB42FFE157200FB8BA3 /* EchoSenseiOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EchoSenseiOS.entitlements; sourceTree = "<group>"; };
+		6D715ED3EDD8AA760CEF17CA /* Pods-EchoSenseiOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseiOS.debug.xcconfig"; path = "Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS.debug.xcconfig"; sourceTree = "<group>"; };
+		9DE7C5FC9E65C75B6F9CC460 /* Pods_EchoSenseiOS.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_EchoSenseiOS.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000001 /* App/EchoSenseiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/EchoSenseiOSApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000002 /* Models/AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AppSettings.swift; sourceTree = "<group>"; };
+		A00000000000000000000003 /* Models/EchoSenseFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/EchoSenseFeature.swift; sourceTree = "<group>"; };
+		A00000000000000000000004 /* Models/ProximityTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ProximityTypes.swift; sourceTree = "<group>"; };
+		A00000000000000000000005 /* Models/Prompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/Prompts.swift; sourceTree = "<group>"; };
+		A00000000000000000000006 /* Services/Camera/CameraFrameSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/CameraFrameSource.swift; sourceTree = "<group>"; };
+		A00000000000000000000007 /* Services/OCR/VisionOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/OCR/VisionOCRService.swift; sourceTree = "<group>"; };
+		A00000000000000000000008 /* Services/Speech/SpeechOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/SpeechOutputService.swift; sourceTree = "<group>"; };
+		A00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/StreamingSentenceChunker.swift; sourceTree = "<group>"; };
+		A00000000000000000000045 /* Services/Speech/VoiceCommandService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/VoiceCommandService.swift; sourceTree = "<group>"; };
+		A00000000000000000000046 /* Models/ModelManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ModelManifest.swift; sourceTree = "<group>"; };
+		A00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/ModelDownloadManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000048 /* Views/ModelSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ModelSetupView.swift; sourceTree = "<group>"; };
+		A00000000000000000000009 /* Services/Translation/TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Translation/TranslationService.swift; sourceTree = "<group>"; };
+		A0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Documents/DocumentTextExtractor.swift; sourceTree = "<group>"; };
+		A0000000000000000000000B /* Services/Inference/LocalLLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/LocalLLMClient.swift; sourceTree = "<group>"; };
+		A0000000000000000000000C /* Services/Inference/CloudVisionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/CloudVisionClient.swift; sourceTree = "<group>"; };
+		A0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/MediaPipeObjectDetectionService.swift; sourceTree = "<group>"; };
+		A0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EchoSenseSessionViewModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000000F /* Views/RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RootView.swift; sourceTree = "<group>"; };
+		A00000000000000000000010 /* Views/HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/HomeView.swift; sourceTree = "<group>"; };
+		A00000000000000000000011 /* Views/FeatureSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FeatureSessionView.swift; sourceTree = "<group>"; };
+		A00000000000000000000012 /* Views/CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/CameraPreviewView.swift; sourceTree = "<group>"; };
+		A00000000000000000000013 /* Views/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SettingsView.swift; sourceTree = "<group>"; };
+		A00000000000000000000014 /* Views/TermsPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/TermsPrivacyView.swift; sourceTree = "<group>"; };
+		A00000000000000000000015 /* Views/LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LicensesView.swift; sourceTree = "<group>"; };
+		A00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A00000000000000000000098 /* Resources/yolov8n.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlpackage; path = Resources/yolov8n.mlpackage; sourceTree = "<group>"; };
+		A00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlmodel; path = Resources/YOLOv3Tiny.mlmodel; sourceTree = "<group>"; };
+		A00000000000000000000018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000019 /* EchoSenseiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EchoSenseiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000001 /* EchoSenseGenAI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = EchoSenseGenAI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000002 /* EchoSenseGenAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoSenseGenAI.swift; sourceTree = "<group>"; };
+		A10000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BAA4D6125B706A21A64FB2E9 /* Pods-EchoSenseGenAI.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseGenAI.release.xcconfig"; path = "Target Support Files/Pods-EchoSenseGenAI/Pods-EchoSenseGenAI.release.xcconfig"; sourceTree = "<group>"; };
+		C291FF4E39ACA1D393471BFC /* Pods_EchoSenseGenAI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_EchoSenseGenAI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		EA8AE2F4E7A3B2BF03602263 /* Pods-EchoSenseiOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseiOS.release.xcconfig"; path = "Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS.release.xcconfig"; sourceTree = "<group>"; };
+		FA58BEEEB6699DF7A632AD61 /* Pods-EchoSenseGenAI.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseGenAI.debug.xcconfig"; path = "Target Support Files/Pods-EchoSenseGenAI/Pods-EchoSenseGenAI.debug.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C00000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8B1CE075551ABFDFDEFA52CA /* Pods_EchoSenseiOS.framework in Frameworks */,
+				041BFFB32FFCC0CF00FB8BA3 /* LiteRTLM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA1DB8C8B8861BE759D107FA /* Pods_EchoSenseGenAI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		621431C0CCE7C812E022DADE /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9DE7C5FC9E65C75B6F9CC460 /* Pods_EchoSenseiOS.framework */,
+				C291FF4E39ACA1D393471BFC /* Pods_EchoSenseGenAI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		D00000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				D00000000000000000000002 /* EchoSenseiOS */,
+				D10000000000000000000001 /* EchoSenseGenAI */,
+				D00000000000000000000003 /* Products */,
+				D9DFE776448285A04A618879 /* Pods */,
+				621431C0CCE7C812E022DADE /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		D00000000000000000000002 /* EchoSenseiOS */ = {
+			isa = PBXGroup;
+			children = (
+				041BFFB42FFE157200FB8BA3 /* EchoSenseiOS.entitlements */,
+				A00000000000000000000001 /* App/EchoSenseiOSApp.swift */,
+				A00000000000000000000002 /* Models/AppSettings.swift */,
+				A00000000000000000000003 /* Models/EchoSenseFeature.swift */,
+				A00000000000000000000004 /* Models/ProximityTypes.swift */,
+				A00000000000000000000005 /* Models/Prompts.swift */,
+				A00000000000000000000046 /* Models/ModelManifest.swift */,
+				A00000000000000000000006 /* Services/Camera/CameraFrameSource.swift */,
+				A00000000000000000000007 /* Services/OCR/VisionOCRService.swift */,
+				A00000000000000000000008 /* Services/Speech/SpeechOutputService.swift */,
+				A00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift */,
+				A00000000000000000000045 /* Services/Speech/VoiceCommandService.swift */,
+				A00000000000000000000009 /* Services/Translation/TranslationService.swift */,
+				A0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift */,
+				A0000000000000000000000B /* Services/Inference/LocalLLMClient.swift */,
+				A0000000000000000000000C /* Services/Inference/CloudVisionClient.swift */,
+				A0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift */,
+				A00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift */,
+				A0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift */,
+				A0000000000000000000000F /* Views/RootView.swift */,
+				A00000000000000000000010 /* Views/HomeView.swift */,
+				A00000000000000000000011 /* Views/FeatureSessionView.swift */,
+				A00000000000000000000012 /* Views/CameraPreviewView.swift */,
+				A00000000000000000000013 /* Views/SettingsView.swift */,
+				A00000000000000000000014 /* Views/TermsPrivacyView.swift */,
+				A00000000000000000000015 /* Views/LicensesView.swift */,
+				A00000000000000000000048 /* Views/ModelSetupView.swift */,
+				A00000000000000000000016 /* Assets.xcassets */,
+				A00000000000000000000098 /* Resources/yolov8n.mlpackage */,
+				A00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel */,
+				A00000000000000000000018 /* Info.plist */,
+			);
+			path = EchoSenseiOS;
+			sourceTree = "<group>";
+		};
+		D00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000019 /* EchoSenseiOS.app */,
+				A10000000000000000000001 /* EchoSenseGenAI.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000001 /* EchoSenseGenAI */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000002 /* EchoSenseGenAI.swift */,
+				A10000000000000000000003 /* Info.plist */,
+			);
+			path = EchoSenseGenAI;
+			sourceTree = "<group>";
+		};
+		D9DFE776448285A04A618879 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				6D715ED3EDD8AA760CEF17CA /* Pods-EchoSenseiOS.debug.xcconfig */,
+				EA8AE2F4E7A3B2BF03602263 /* Pods-EchoSenseiOS.release.xcconfig */,
+				FA58BEEEB6699DF7A632AD61 /* Pods-EchoSenseGenAI.debug.xcconfig */,
+				BAA4D6125B706A21A64FB2E9 /* Pods-EchoSenseGenAI.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E00000000000000000000001 /* EchoSenseiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F00000000000000000000003 /* Build configuration list for PBXNativeTarget "EchoSenseiOS" */;
+			buildPhases = (
+				68C59575680AE28E4342E157 /* [CP] Check Pods Manifest.lock */,
+				C00000000000000000000002 /* Sources */,
+				C00000000000000000000001 /* Frameworks */,
+				C00000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EchoSenseiOS;
+			productName = EchoSenseiOS;
+			productReference = A00000000000000000000019 /* EchoSenseiOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E10000000000000000000001 /* EchoSenseGenAI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10000000000000000000003 /* Build configuration list for PBXNativeTarget "EchoSenseGenAI" */;
+			buildPhases = (
+				297ACB5E4AE31146B2650AEC /* [CP] Check Pods Manifest.lock */,
+				C10000000000000000000001 /* Sources */,
+				C10000000000000000000002 /* Frameworks */,
+				C10000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EchoSenseGenAI;
+			productName = EchoSenseGenAI;
+			productReference = A10000000000000000000001 /* EchoSenseGenAI.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E00000000000000000000002 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					E00000000000000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					E10000000000000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = F00000000000000000000001 /* Build configuration list for PBXProject "EchoSenseiOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D00000000000000000000001;
+			packageReferences = (
+				041BFFB12FFCC0CF00FB8BA3 /* XCRemoteSwiftPackageReference "LiteRT-LM" */,
+			);
+			productRefGroup = D00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E00000000000000000000001 /* EchoSenseiOS */,
+				E10000000000000000000001 /* EchoSenseGenAI */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C00000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000000000000000000016 /* Assets.xcassets in Resources */,
+				B00000000000000000000098 /* Resources/yolov8n.mlpackage in Resources */,
+				B00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		297ACB5E4AE31146B2650AEC /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-EchoSenseGenAI-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		68C59575680AE28E4342E157 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-EchoSenseiOS-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C00000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000000000000000000001 /* App/EchoSenseiOSApp.swift in Sources */,
+				B00000000000000000000002 /* Models/AppSettings.swift in Sources */,
+				B00000000000000000000003 /* Models/EchoSenseFeature.swift in Sources */,
+				B00000000000000000000004 /* Models/ProximityTypes.swift in Sources */,
+				B00000000000000000000005 /* Models/Prompts.swift in Sources */,
+				B00000000000000000000046 /* Models/ModelManifest.swift in Sources */,
+				B00000000000000000000006 /* Services/Camera/CameraFrameSource.swift in Sources */,
+				B00000000000000000000007 /* Services/OCR/VisionOCRService.swift in Sources */,
+				B00000000000000000000008 /* Services/Speech/SpeechOutputService.swift in Sources */,
+				B00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift in Sources */,
+				B00000000000000000000045 /* Services/Speech/VoiceCommandService.swift in Sources */,
+				B00000000000000000000009 /* Services/Translation/TranslationService.swift in Sources */,
+				B0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift in Sources */,
+				B0000000000000000000000B /* Services/Inference/LocalLLMClient.swift in Sources */,
+				B0000000000000000000000C /* Services/Inference/CloudVisionClient.swift in Sources */,
+				B0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift in Sources */,
+				B00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift in Sources */,
+				B0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift in Sources */,
+				B0000000000000000000000F /* Views/RootView.swift in Sources */,
+				B00000000000000000000010 /* Views/HomeView.swift in Sources */,
+				B00000000000000000000011 /* Views/FeatureSessionView.swift in Sources */,
+				B00000000000000000000012 /* Views/CameraPreviewView.swift in Sources */,
+				B00000000000000000000013 /* Views/SettingsView.swift in Sources */,
+				B00000000000000000000014 /* Views/TermsPrivacyView.swift in Sources */,
+				B00000000000000000000015 /* Views/LicensesView.swift in Sources */,
+				B00000000000000000000048 /* Views/ModelSetupView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* EchoSenseGenAI.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		F00000000000000000000004 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F00000000000000000000005 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F00000000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6D715ED3EDD8AA760CEF17CA /* Pods-EchoSenseiOS.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = EchoSenseiOS/EchoSenseiOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 8CVX7KZ2YK;
+				ENABLE_PREVIEWS = YES;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EchoSenseiOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.terranet.echosense.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F00000000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = EA8AE2F4E7A3B2BF03602263 /* Pods-EchoSenseiOS.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = EchoSenseiOS/EchoSenseiOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 8CVX7KZ2YK;
+				ENABLE_PREVIEWS = YES;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EchoSenseiOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.terranet.echosense.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		F10000000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = FA58BEEEB6699DF7A632AD61 /* Pods-EchoSenseGenAI.debug.xcconfig */;
+			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EchoSenseGenAI/Info.plist;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/Frameworks",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.terranet.echosense.genai;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F10000000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = BAA4D6125B706A21A64FB2E9 /* Pods-EchoSenseGenAI.release.xcconfig */;
+			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EchoSenseGenAI/Info.plist;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/Frameworks",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.terranet.echosense.genai;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F00000000000000000000001 /* Build configuration list for PBXProject "EchoSenseiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F00000000000000000000004 /* Debug */,
+				F00000000000000000000005 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F00000000000000000000003 /* Build configuration list for PBXNativeTarget "EchoSenseiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F00000000000000000000006 /* Debug */,
+				F00000000000000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10000000000000000000003 /* Build configuration list for PBXNativeTarget "EchoSenseGenAI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000006 /* Debug */,
+				F10000000000000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		041BFFB12FFCC0CF00FB8BA3 /* XCRemoteSwiftPackageReference "LiteRT-LM" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google-ai-edge/LiteRT-LM.git";
+			requirement = {
+				branch = v0.13.1;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		041BFFB22FFCC0CF00FB8BA3 /* LiteRTLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041BFFB12FFCC0CF00FB8BA3 /* XCRemoteSwiftPackageReference "LiteRT-LM" */;
+			productName = LiteRTLM;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = E00000000000000000000002 /* Project object */;
+}

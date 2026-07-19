@@ -58,7 +58,10 @@ interface DataStoreRepository {
       llmResponseStyle: String, 
       geminiApiKey: String, 
       showDebugOverlay: Boolean,
-      ttsVoiceName: String
+      ttsVoiceName: String,
+      onlineProvider: String,
+      onlineUsageMode: String,
+      onlineConsentGranted: Boolean,
   )
 }
 
@@ -189,6 +192,9 @@ class DefaultDataStoreRepository(
     geminiApiKey: String,
     showDebugOverlay: Boolean,
     ttsVoiceName: String,
+    onlineProvider: String,
+    onlineUsageMode: String,
+    onlineConsentGranted: Boolean,
   ) {
     runBlocking {
       dataStore.updateData { settings ->
@@ -201,6 +207,9 @@ class DefaultDataStoreRepository(
               .setGeminiApiKey(geminiApiKey)
               .setShowDebugOverlay(showDebugOverlay)
               .setTtsVoiceName(ttsVoiceName)
+              .setOnlineProvider(onlineProvider)
+              .setOnlineUsageMode(onlineUsageMode)
+              .setOnlineConsentGranted(onlineConsentGranted)
               .build()
           )
           .build()
