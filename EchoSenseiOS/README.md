@@ -1,88 +1,126 @@
-# EchoSense iOS
+# EchoSense for iOS
 
-EchoSense iOS is a from-scratch SwiftUI port of the Android EchoSense feature set. The app is offline-first and uses native iOS frameworks plus the official Google MediaPipe Tasks iOS SDK where appropriate.
+EchoSense is an accessibility-focused visual assistance app for iPhone. It combines the camera, Apple frameworks, bundled object detection, speech, OCR, and a downloaded multimodal language model to describe surroundings and make printed information easier to access.
 
-## Current Scaffold
+The iOS app is written in SwiftUI and shares the EchoSense workflow and model catalog with the Android application while using native iOS services where appropriate.
 
-This project intentionally separates UI, camera, OCR, object detection, speech, and local LLM inference behind protocols so multiple agents can implement work streams in parallel.
+## Features
 
-Core choices:
+- **Navigate** describes the current scene and accepts optional voice commands such as “help me find my keys.”
+- **Safety** continuously detects nearby objects and speaks proximity warnings.
+- **Currency** identifies visible bank notes.
+- **Read** extracts text from the camera, photos, and imported documents and reads it aloud.
+- **Translate** extracts document text and translates it to English.
+- **On-device analysis** runs a downloaded Gemma multimodal model through LiteRT-LM.
+- **Optional online analysis** supports user-provided Gemini or OpenAI API keys and configurable ask, fallback, or prefer-online behavior.
 
-- SwiftUI app shell with observable feature state.
-- AVFoundation camera frames.
-- Vision OCR for local document text recognition.
-- AVSpeechSynthesizer for local TTS.
-- MediaPipe GenAI/GenAIC loaded directly by the app target for the current GenAI-only experiment.
-- MediaPipe Tasks Vision is disabled in the app target for this experiment, so collision detection is unavailable until a non-conflicting detector path is selected.
-- Small bundled vision assets under `EchoSenseiOS/Assets/Models`; LLMs are downloaded after installation.
+Safety warnings are experimental estimates based on camera detections. EchoSense is not a certified mobility aid and should not replace a cane, guide dog, attentive travel, or other established safety practices.
 
-## MediaPipe iOS Rules Mapped From Official Docs
+## Requirements
 
-Object detection:
+- macOS with a current Xcode release capable of building for iOS 17
+- iOS 17 or newer
+- CocoaPods
+- A physical iPhone for camera, microphone, speech, object-detection, and local-model testing
+- Several gigabytes of free storage for the model and temporary download parts
 
-- The current iOS app target intentionally does not add `pod 'MediaPipeTasksVision'`.
-- Earlier builds showed MediaPipe Vision and GenAI register overlapping Objective-C classes and MediaPipe calculators when both are loaded in one app process.
-- Collision detection currently falls back to unavailable when `MediaPipeTasksVision` cannot be imported.
-- Use `ObjectDetectorOptions`.
-- Set `options.baseOptions.modelAssetPath` to a bundle model path.
-- Use `runningMode = .liveStream` for camera streams.
-- Provide an `ObjectDetectorLiveStreamDelegate` to receive asynchronous results.
-- Convert camera frames to `MPImage` using `MPImage(sampleBuffer:)`.
+The current project uses the LiteRT-LM Swift package from Google's `v0.13.1` branch. Xcode resolves that package when the workspace is opened.
 
-LLM inference:
+## Build and run
 
-- The official MediaPipe LLM docs use `MediaPipeTasksGenAI` and `MediaPipeTasksGenAIC`.
-- The app target now includes these pods directly and excludes `MediaPipeTasksVision`, matching the Android-side experiment where Vision was removed to avoid conflicts.
-- `LocalLLMClient` imports GenAI conditionally; the concrete `LlmInference` bridge still needs to be implemented.
-- Initialize with a local model path.
-- Run text generation on a background task.
-- Prefer streaming results to mirror Android’s sentence chunking/TTS pipeline.
-
-Sources:
-
-- MediaPipe Object Detection iOS guide: https://developers.google.com/edge/mediapipe/solutions/vision/object_detector/ios
-- MediaPipe iOS setup guide: https://developers.google.com/edge/mediapipe/solutions/setup_ios
-- MediaPipe LLM Inference iOS guide: https://developers.google.com/edge/mediapipe/solutions/genai/llm_inference/ios
-
-## Setup
-
-1. Install CocoaPods 1.12.1 or newer.
-2. From `EchoSenseiOS/`, run:
-
-   ```bash
-   /usr/local/lib/ruby/gems/4.0.0/bin/pod install
-   ```
-
-   If `pod` is on your shell PATH, `pod install` is equivalent.
-
-3. Open `EchoSenseiOS.xcworkspace`, not the `.xcodeproj`.
-4. On first launch, download the compatible LLM from the EchoSense model catalog, or import one manually as an advanced fallback.
-5. Build on a physical device for camera and MediaPipe live-stream testing.
-
-Command-line verification in this sandbox used explicit project builds because this shell's `xcodebuild` rejected the generated workspace package even though the project and Pods build correctly:
+Install the CocoaPods workspace support from this directory:
 
 ```bash
-xcodebuild -project Pods/Pods.xcodeproj -scheme Pods-EchoSenseiOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CONFIGURATION_BUILD_DIR="$PWD/DerivedData/Build/Products/Debug-iphonesimulator" CODE_SIGNING_ALLOWED=NO build
-xcodebuild -quiet -project EchoSenseiOS.xcodeproj -scheme EchoSenseiOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+cd EchoSenseiOS
+pod install
+open EchoSenseiOS.xcworkspace
 ```
 
-## Assets
+Select the `EchoSenseiOS` scheme, choose a signing team, and run on a connected iPhone. Open the `.xcworkspace`, not the `.xcodeproj`, because the project retains CocoaPods-generated build configuration and framework references.
 
-The small `efficientdet_lite2.task` object detector can be bundled. `.litertlm` LLM files must not be added to the app bundle; they are downloaded into Application Support after installation.
+For a command-line build after signing has been configured:
 
-## Status
+```bash
+xcodebuild \
+  -workspace EchoSenseiOS.xcworkspace \
+  -scheme EchoSenseiOS \
+  -destination 'generic/platform=iOS' \
+  build
+```
 
-This is a functional foundation, not a finished app. It includes:
+Simulator builds can help with layout work, but they do not validate the physical camera pipeline, realistic memory limits, GPU inference, microphone input, or speech output.
 
-- App shell and task navigation.
-- Shared EchoSense state model.
-- Camera frame source.
-- Vision OCR service.
-- TTS service.
-- Translation placeholder.
-- Cloud provider placeholder.
-- MediaPipe object detector wrapper compiled as a no-op when Vision is absent.
-- GenAI-only app target experiment with `MediaPipeTasksGenAI` and `MediaPipeTasksGenAIC`.
-- Local LLM protocol with placeholder generation until the concrete GenAI inference bridge is implemented.
-- Terms/privacy and licenses views.
-- Orchestration plan for parallel agents.
+## On-device model setup
+
+The large language model is deliberately **not included in the application bundle**. On first run, EchoSense offers to download the recommended model without requiring an account. Model controls are also available under **Settings → On-Device AI Model**.
+
+The app reads its catalog from:
+
+```text
+https://models.echosense-ai.app/v1/models.json
+```
+
+Downloads use background `URLSession` tasks and parallel HTTPS range requests. EchoSense checks available storage and verifies the completed model's expected size and SHA-256 value before moving it into Application Support. Users can pause, resume, retry, delete, or import a compatible `.litertlm` model from Files.
+
+Do not add `.litertlm` or other large LLM files to the app target. The small Core ML object-detection models under `EchoSenseiOS/Resources` are intentionally bundled for Safety processing.
+
+## Optional online analysis
+
+Online analysis is opt-in. A user can connect Gemini or OpenAI from **Settings → Online Analysis**, supply their own API key, and choose one of three modes:
+
+- **Ask before use** keeps local analysis primary and exposes online analysis as an explicit action.
+- **Automatic fallback** contacts the provider only when local analysis fails.
+- **Prefer online** uses the provider first when a network connection is available.
+
+The API key is stored in iOS Keychain and must never be committed to this repository. When online analysis runs, the current image and prompt are sent directly to the selected provider and the provider may charge the user's account.
+
+## Architecture
+
+```text
+EchoSenseiOS/
+├── App/                    SwiftUI application entry point
+├── Features/               Shared feature-session state and orchestration
+├── Models/                 Settings, prompts, manifest, and proximity types
+├── Services/
+│   ├── Camera/             AVFoundation frame capture
+│   ├── Documents/          File and document text extraction
+│   ├── Inference/          LiteRT-LM, cloud, model download, and detection
+│   ├── OCR/                Apple Vision text recognition
+│   ├── Speech/             TTS, streaming sentences, and voice commands
+│   └── Translation/        Local translation workflow
+├── Resources/              Bundled Core ML detection assets
+└── Views/                  Home, feature, setup, settings, and legal UI
+```
+
+Key platform integrations include:
+
+- SwiftUI for application UI and navigation
+- AVFoundation for camera frames and audio capture
+- Vision and Core ML for OCR and selectable YOLO object detectors
+- Speech for navigation voice commands
+- AVSpeechSynthesizer for spoken output
+- LiteRT-LM for local multimodal generation, with GPU-first initialization and supported fallbacks
+- Security/Keychain for user-provided online API credentials
+
+## Permissions
+
+The app requests:
+
+- Camera access for scene, document, and currency capture
+- Microphone and speech-recognition access for optional voice commands
+- Photo/file access only when the user chooses content to import
+- Network access for model downloads and optional online analysis
+
+## Privacy and model licensing
+
+On-device analysis keeps captured images on the iPhone. Imported documents and camera frames should still be treated as sensitive data. Online analysis has different privacy characteristics because it transmits the selected image and prompt to the configured provider.
+
+Downloaded models remain subject to the license linked by the model catalog. EchoSense displays model and open-source license information in Settings.
+
+## Troubleshooting
+
+- If the workspace is missing or CocoaPods reports a lock mismatch, run `pod install` again and reopen `EchoSenseiOS.xcworkspace`.
+- If the model is not recognized, confirm Settings reports it as installed, verify sufficient free storage, and restart the app.
+- If local inference fails after cancellation, capture the `[generation …]` diagnostics from the Xcode console.
+- If voice commands fail, confirm both Microphone and Speech Recognition permissions are enabled in iOS Settings.
+- Local multimodal generation is memory intensive. Validate cancellation, backgrounding, and repeated analysis on a physical device.
