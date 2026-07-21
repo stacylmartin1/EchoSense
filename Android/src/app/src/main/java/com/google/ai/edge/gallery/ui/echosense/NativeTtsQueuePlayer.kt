@@ -45,6 +45,13 @@ class NativeTtsQueuePlayer(
     private val application: Application,
     private val onAllComplete: () -> Unit,
 ) {
+    private data class PendingSafetyAnnouncement(
+        val text: String,
+        val severity: ProximitySeverity,
+        val rate: Float,
+        val expiresAtMs: Long,
+    )
+
     private var tts: TextToSpeech? = null
     var selectedVoiceName: String = "" // Set externally or implicitly read
     private val isReady = AtomicBoolean(false)
@@ -53,6 +60,11 @@ class NativeTtsQueuePlayer(
     private val utteranceCounter = AtomicInteger(0)
     private val pendingUtterances = AtomicInteger(0)
     private val activeUtteranceIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val safetyLock = Any()
+    private val safetyAnnouncementsSuspended = AtomicBoolean(false)
+    private var activeSafetyUtteranceId: String? = null
+    private var activeSafetySeverity: ProximitySeverity? = null
+    private var pendingSafetyAnnouncement: PendingSafetyAnnouncement? = null
 
     // Deferred announcements that arrived before TTS was ready
     private val deferredAnnouncements = mutableListOf<String>()
@@ -120,17 +132,20 @@ class NativeTtsQueuePlayer(
             override fun onDone(utteranceId: String?) {
                 Log.d(TAG, "Utterance done: $utteranceId, pending=${pendingUtterances.get()}")
                 completeUtterance(utteranceId)
+                safetyUtteranceEnded(utteranceId)
             }
 
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
                 Log.e(TAG, "Utterance error: $utteranceId")
                 completeUtterance(utteranceId)
+                safetyUtteranceEnded(utteranceId)
             }
 
             override fun onStop(utteranceId: String?, interrupted: Boolean) {
                 Log.d(TAG, "Utterance stopped: $utteranceId, interrupted=$interrupted")
                 completeUtterance(utteranceId)
+                safetyUtteranceEnded(utteranceId)
             }
         })
 
@@ -144,6 +159,7 @@ class NativeTtsQueuePlayer(
             }
             deferredAnnouncements.clear()
         }
+        maybeStartPendingSafety()
     }
 
     private fun applyDefaultLocale(engine: TextToSpeech) {
@@ -215,8 +231,88 @@ class NativeTtsQueuePlayer(
             return
         }
         // QUEUE_FLUSH interrupts current speech and clears the queue
+        synchronized(safetyLock) {
+            activeSafetyUtteranceId = null
+            activeSafetySeverity = null
+            pendingSafetyAnnouncement = null
+        }
         resetPendingUtterances()
         speakInternal(clean, TextToSpeech.QUEUE_FLUSH)
+    }
+
+    /**
+     * Speaks a collision warning while protecting an active Safety phrase from
+     * successive sensor updates. Only the freshest pending update is retained.
+     */
+    fun announceSafety(
+        text: String,
+        severity: ProximitySeverity,
+        rate: Float,
+        followUpText: String? = null,
+    ) {
+        if (safetyAnnouncementsSuspended.get()) return
+        val clean = sanitize(text) ?: return
+        val announcement = PendingSafetyAnnouncement(
+            text = clean,
+            severity = severity,
+            rate = rate.coerceIn(0.8f, 1.4f),
+            expiresAtMs = System.currentTimeMillis() + 1_250L,
+        )
+        val followUp = followUpText?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            PendingSafetyAnnouncement(
+                text = it,
+                severity = severity,
+                rate = rate.coerceIn(0.8f, 1.4f),
+                expiresAtMs = System.currentTimeMillis() + 2_000L,
+            )
+        }
+        synchronized(safetyLock) {
+            if (!isReady.get()) {
+                pendingSafetyAnnouncement = announcement
+                return
+            }
+            val activeSeverity = activeSafetySeverity
+            if (activeSeverity != null) {
+                when {
+                    severity.ordinal > activeSeverity.ordinal -> {
+                        activeSafetyUtteranceId = null
+                        activeSafetySeverity = null
+                        pendingSafetyAnnouncement = null
+                        resetPendingUtterances()
+                        tts?.stop()
+                        startSafetyLocked(announcement)
+                        pendingSafetyAnnouncement = followUp
+                    }
+                    severity == activeSeverity -> {
+                        pendingSafetyAnnouncement = announcement
+                    }
+                    else -> Unit // Do not follow an urgent phrase with a stale downgrade.
+                }
+                return
+            }
+            if (severity == ProximitySeverity.INFO && pendingUtterances.get() > 0) {
+                pendingSafetyAnnouncement = announcement
+                return
+            }
+            startSafetyLocked(announcement)
+            pendingSafetyAnnouncement = followUp
+        }
+    }
+
+    /**
+     * Suppresses new Safety speech and discards any pending update. Callers
+     * stop current speech before suspending when beginning result narration.
+     */
+    fun setSafetyAnnouncementsSuspended(suspended: Boolean) {
+        safetyAnnouncementsSuspended.set(suspended)
+        if (suspended) clearPendingSafetyAnnouncements()
+    }
+
+    /** Drops Safety updates that have not started without disturbing narration. */
+    fun clearPendingSafetyAnnouncements() {
+        synchronized(safetyLock) {
+            pendingSafetyAnnouncement = null
+        }
     }
 
     /**
@@ -239,6 +335,11 @@ class NativeTtsQueuePlayer(
     /** Stop all speech and clear the queue. */
     fun stop() {
         inputComplete.set(false)
+        synchronized(safetyLock) {
+            activeSafetyUtteranceId = null
+            activeSafetySeverity = null
+            pendingSafetyAnnouncement = null
+        }
         resetPendingUtterances()
         tts?.stop()
     }
@@ -265,22 +366,65 @@ class NativeTtsQueuePlayer(
         resetPendingUtterances()
     }
 
-    private fun speakInternal(text: String, queueMode: Int) {
+    private fun speakInternal(text: String, queueMode: Int, rate: Float = 1.0f): String? {
         if (!isReady.get()) {
             Log.w(TAG, "TTS not ready, cannot speak: '$text'")
-            return
+            return null
         }
-        val engine = tts ?: return
+        val engine = tts ?: return null
         val id = "echosense_${utteranceCounter.incrementAndGet()}"
         activeUtteranceIds.add(id)
         pendingUtterances.incrementAndGet()
+        engine.setSpeechRate(rate)
         val result = engine.speak(text, queueMode, null, id)
         if (result != TextToSpeech.SUCCESS) {
             Log.e(TAG, "TTS speak failed (result=$result) for: '$text'")
             completeUtterance(id)
+            return null
         } else {
             Log.d(TAG, "TTS queued (mode=${if (queueMode == TextToSpeech.QUEUE_ADD) "ADD" else "FLUSH"}): '$text'")
         }
+        return id
+    }
+
+    private fun startSafetyLocked(announcement: PendingSafetyAnnouncement) {
+        inputComplete.set(false)
+        resetPendingUtterances()
+        val id = speakInternal(announcement.text, TextToSpeech.QUEUE_FLUSH, announcement.rate)
+        if (id != null) {
+            activeSafetyUtteranceId = id
+            activeSafetySeverity = announcement.severity
+        }
+    }
+
+    private fun safetyUtteranceEnded(utteranceId: String?) {
+        synchronized(safetyLock) {
+            if (utteranceId != activeSafetyUtteranceId) {
+                if (pendingUtterances.get() <= 0) startPendingSafetyLocked()
+                return
+            }
+            activeSafetyUtteranceId = null
+            activeSafetySeverity = null
+            val pending = pendingSafetyAnnouncement
+            pendingSafetyAnnouncement = null
+            if (pending != null && pending.expiresAtMs > System.currentTimeMillis()) {
+                // Safety remains ahead of narration queued while the protected
+                // phrase was playing. Flush that stale narration continuation.
+                resetPendingUtterances()
+                startSafetyLocked(pending)
+            }
+        }
+    }
+
+    private fun maybeStartPendingSafety() {
+        synchronized(safetyLock) { startPendingSafetyLocked() }
+    }
+
+    private fun startPendingSafetyLocked() {
+        val pending = pendingSafetyAnnouncement ?: return
+        if (activeSafetyUtteranceId != null || pendingUtterances.get() > 0) return
+        pendingSafetyAnnouncement = null
+        if (pending.expiresAtMs > System.currentTimeMillis()) startSafetyLocked(pending)
     }
 
     private fun resetPendingUtterances() {

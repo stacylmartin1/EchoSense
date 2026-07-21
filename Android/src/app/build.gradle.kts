@@ -94,6 +94,7 @@ dependencies {
   implementation(libs.commonmark)
   implementation(libs.richtext)
   implementation(libs.mediapipe.tasks.vision)
+  implementation(libs.arcore)
   implementation(libs.tflite)
   implementation(libs.tflite.gpu)
   implementation(libs.tflite.support)

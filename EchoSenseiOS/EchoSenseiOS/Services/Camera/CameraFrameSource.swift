@@ -6,6 +6,13 @@ protocol CameraFrameSourceDelegate: AnyObject {
   func cameraFrameSource(_ source: CameraFrameSource, authorizationDidChange status: AVAuthorizationStatus)
   func cameraFrameSourceDidStart(_ source: CameraFrameSource)
   func cameraFrameSource(_ source: CameraFrameSource, didOutput sampleBuffer: CMSampleBuffer)
+  func cameraFrameSource(_ source: CameraFrameSource, depthAvailabilityDidChange isAvailable: Bool)
+  func cameraFrameSource(_ source: CameraFrameSource, didUpdateDepth observations: [DepthObservation])
+}
+
+extension CameraFrameSourceDelegate {
+  func cameraFrameSource(_ source: CameraFrameSource, depthAvailabilityDidChange isAvailable: Bool) {}
+  func cameraFrameSource(_ source: CameraFrameSource, didUpdateDepth observations: [DepthObservation]) {}
 }
 
 final class CameraFrameSource: NSObject, ObservableObject {
@@ -17,6 +24,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
 
   private let sessionQueue = DispatchQueue(label: "com.echosense.camera.session")
   private let videoOutput = AVCaptureVideoDataOutput()
+  private let depthOutput = AVCaptureDepthDataOutput()
+  private var outputSynchronizer: AVCaptureDataOutputSynchronizer?
+  private let frameQueue = DispatchQueue(label: "com.echosense.camera.frames", qos: .userInitiated)
   private let deliveryLock = NSLock()
   private var shouldDeliverFrames = false
 
@@ -81,7 +91,8 @@ final class CameraFrameSource: NSObject, ObservableObject {
     session.beginConfiguration()
     session.sessionPreset = .high
 
-    guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+    let lidarCamera = AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back)
+    guard let camera = lidarCamera ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
           let input = try? AVCaptureDeviceInput(device: camera),
           session.canAddInput(input) else {
       session.commitConfiguration()
@@ -89,18 +100,71 @@ final class CameraFrameSource: NSObject, ObservableObject {
     }
     session.addInput(input)
 
+    let depthConfigured = lidarCamera != nil && configureDepthFormat(for: camera)
+
     videoOutput.alwaysDiscardsLateVideoFrames = true
     videoOutput.videoSettings = [
       kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
     ]
-    videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "com.echosense.camera.frames"))
     if session.canAddOutput(videoOutput) {
       session.addOutput(videoOutput)
     }
+
+    if depthConfigured, session.canAddOutput(depthOutput) {
+      depthOutput.alwaysDiscardsLateDepthData = true
+      depthOutput.isFilteringEnabled = true
+      session.addOutput(depthOutput)
+      outputSynchronizer = AVCaptureDataOutputSynchronizer(dataOutputs: [videoOutput, depthOutput])
+      outputSynchronizer?.setDelegate(self, queue: frameQueue)
+    } else {
+      videoOutput.setSampleBufferDelegate(self, queue: frameQueue)
+    }
+
     if let connection = videoOutput.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
       connection.videoRotationAngle = 90
     }
+    if let connection = depthOutput.connection(with: .depthData), connection.isVideoRotationAngleSupported(90) {
+      connection.videoRotationAngle = 90
+    }
     session.commitConfiguration()
+
+    let depthAvailable = outputSynchronizer != nil
+    DispatchQueue.main.async {
+      self.delegate?.cameraFrameSource(self, depthAvailabilityDidChange: depthAvailable)
+    }
+  }
+
+  private func configureDepthFormat(for camera: AVCaptureDevice) -> Bool {
+    let candidates = camera.formats.filter { format in
+      let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+      return !format.supportedDepthDataFormats.isEmpty && dimensions.width <= 1920
+    }
+    guard let videoFormat = candidates.max(by: { lhs, rhs in
+      let left = CMVideoFormatDescriptionGetDimensions(lhs.formatDescription)
+      let right = CMVideoFormatDescriptionGetDimensions(rhs.formatDescription)
+      return Int(left.width) * Int(left.height) < Int(right.width) * Int(right.height)
+    }) else { return false }
+
+    guard let depthFormat = videoFormat.supportedDepthDataFormats.max(by: { lhs, rhs in
+      let left = CMVideoFormatDescriptionGetDimensions(lhs.formatDescription)
+      let right = CMVideoFormatDescriptionGetDimensions(rhs.formatDescription)
+      return Int(left.width) * Int(left.height) < Int(right.width) * Int(right.height)
+    }) else { return false }
+
+    do {
+      if session.canSetSessionPreset(.inputPriority) {
+        session.sessionPreset = .inputPriority
+      }
+      try camera.lockForConfiguration()
+      camera.activeFormat = videoFormat
+      camera.activeDepthDataFormat = depthFormat
+      camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 30)
+      camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 30)
+      camera.unlockForConfiguration()
+      return true
+    } catch {
+      return false
+    }
   }
 
   func captureCurrentFrameImage(from sampleBuffer: CMSampleBuffer) -> UIImage? {
@@ -136,5 +200,77 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
   ) {
     guard canDeliverFrames() else { return }
     delegate?.cameraFrameSource(self, didOutput: sampleBuffer)
+  }
+}
+
+extension CameraFrameSource: AVCaptureDataOutputSynchronizerDelegate {
+  func dataOutputSynchronizer(
+    _ synchronizer: AVCaptureDataOutputSynchronizer,
+    didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
+  ) {
+    guard canDeliverFrames(),
+          let videoData = synchronizedDataCollection.synchronizedData(for: videoOutput)
+            as? AVCaptureSynchronizedSampleBufferData,
+          !videoData.sampleBufferWasDropped else { return }
+
+    delegate?.cameraFrameSource(self, didOutput: videoData.sampleBuffer)
+
+    guard let synchronizedDepth = synchronizedDataCollection.synchronizedData(for: depthOutput)
+            as? AVCaptureSynchronizedDepthData,
+          !synchronizedDepth.depthDataWasDropped else { return }
+    let observations = Self.summarize(depthData: synchronizedDepth.depthData)
+    delegate?.cameraFrameSource(self, didUpdateDepth: observations)
+  }
+
+  private static func summarize(depthData: AVDepthData) -> [DepthObservation] {
+    let converted = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
+    let map = converted.depthDataMap
+    CVPixelBufferLockBaseAddress(map, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
+
+    guard let baseAddress = CVPixelBufferGetBaseAddress(map) else { return [] }
+    let width = CVPixelBufferGetWidth(map)
+    let height = CVPixelBufferGetHeight(map)
+    let rowStride = CVPixelBufferGetBytesPerRow(map) / MemoryLayout<Float32>.stride
+    let values = baseAddress.assumingMemoryBound(to: Float32.self)
+    let regions: [(Bearing, ClosedRange<Float>)] = [
+      (.left, 0.08...0.36),
+      (.center, 0.36...0.64),
+      (.right, 0.64...0.92),
+    ]
+
+    return regions.compactMap { bearing, xRange in
+      var samples: [Float] = []
+      var attempted = 0
+      let stepX = max(1, width / 36)
+      let stepY = max(1, height / 28)
+      let minX = Int(Float(width) * xRange.lowerBound)
+      let maxX = min(width - 1, Int(Float(width) * xRange.upperBound))
+      let minY = Int(Float(height) * 0.22)
+      let maxY = min(height - 1, Int(Float(height) * 0.78))
+
+      for y in stride(from: minY, through: maxY, by: stepY) {
+        for x in stride(from: minX, through: maxX, by: stepX) {
+          attempted += 1
+          let value = values[y * rowStride + x]
+          if value.isFinite, value >= 0.20, value <= 8.0 { samples.append(value) }
+        }
+      }
+
+      guard samples.count >= 12 else { return nil }
+      samples.sort()
+      let distance = samples[min(samples.count - 1, Int(Float(samples.count) * 0.18))]
+      guard distance <= 3.5 else { return nil }
+      let lower = samples[Int(Float(samples.count - 1) * 0.25)]
+      let upper = samples[Int(Float(samples.count - 1) * 0.75)]
+      let coverage = Float(samples.count) / Float(max(1, attempted))
+      let wallLike = coverage >= 0.65 && upper - lower <= 0.28
+      return DepthObservation(
+        bearing: bearing,
+        distanceMeters: distance,
+        confidence: min(1, coverage),
+        surface: wallLike ? .wall : .unknown
+      )
+    }
   }
 }

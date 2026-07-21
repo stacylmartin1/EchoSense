@@ -16,7 +16,7 @@ import com.google.ai.edge.gallery.data.Category
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.echosense.createEchoSenseGemmaModel
+import com.google.ai.edge.gallery.ui.echosense.createEchoSenseGemmaModels
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatModelHelper
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import dagger.Module
@@ -33,7 +33,7 @@ class CurrencyModeTask @Inject constructor() : CustomTask {
         label = "Currency Identifier",
         category = Category.ECHOSENSE,
         icon = Icons.Outlined.AttachMoney,
-        models = mutableListOf(createEchoSenseGemmaModel()),
+        models = createEchoSenseGemmaModels().toMutableList(),
         description = "Identify currency denominations from camera or photos",
         textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
     )

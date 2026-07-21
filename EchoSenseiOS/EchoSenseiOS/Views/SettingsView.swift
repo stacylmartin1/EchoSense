@@ -13,6 +13,7 @@ struct SettingsView: View {
   @State private var showingModelSetup = false
   @State private var showingLocalModelImporter = false
   @State private var showingCloudSetup = false
+  @State private var showingDeleteModelConfirmation = false
   @State private var voices: [AVSpeechSynthesisVoice] = []
 
   var body: some View {
@@ -43,9 +44,35 @@ struct SettingsView: View {
               Text("\(voice.name) (\(voice.language))").tag(voice.identifier)
             }
           }
+          VStack(alignment: .leading, spacing: 6) {
+            HStack {
+              Text("Safety speech speed")
+              Spacer()
+              Text(String(format: "%.2f×", settings.safetySpeechRate))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            }
+            Slider(value: $settings.safetySpeechRate, in: 0.8...1.4, step: 0.05)
+              .accessibilityLabel("Safety speech speed")
+              .accessibilityValue(String(format: "%.2f times", settings.safetySpeechRate))
+            Text("Changes obstacle announcements only.")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          }
         }
 
         Section("On-Device AI Model") {
+          if modelDownloads.availableModels.count > 1 {
+            Picker("Download model", selection: Binding(
+              get: { modelDownloads.selectedModelID },
+              set: { modelDownloads.selectModel(id: $0) }
+            )) {
+              ForEach(modelDownloads.availableModels) { model in
+                Text(model.displayName).tag(model.id)
+              }
+            }
+            .disabled(modelDownloads.phase == .downloading || modelDownloads.phase == .paused || modelDownloads.phase == .verifying)
+          }
           LabeledContent("Status", value: modelDownloads.statusText)
           if let name = modelDownloads.installedModelName {
             LabeledContent("Installed", value: name)
@@ -62,7 +89,7 @@ struct SettingsView: View {
           .accessibilityHint("Opens the file picker for a compatible MediaPipe or LiteRT-LM model file.")
           if modelDownloads.installedModelURL != nil {
             Button("Delete Downloaded Model", role: .destructive) {
-              modelDownloads.deleteInstalledModel()
+              showingDeleteModelConfirmation = true
             }
           }
           if let licenseURL = modelDownloads.availableModel?.licenseURL {
@@ -95,6 +122,14 @@ struct SettingsView: View {
         ToolbarItem(placement: .topBarTrailing) {
           Button("Done") { dismiss() }
         }
+      }
+      .alert("Delete Downloaded Model?", isPresented: $showingDeleteModelConfirmation) {
+        Button("Cancel", role: .cancel) {}
+        Button("Delete Model", role: .destructive) {
+          modelDownloads.deleteInstalledModel()
+        }
+      } message: {
+        Text("Delete \(modelDownloads.installedModelName ?? "the downloaded model")? You will need to download the model again before on-device analysis can use it.")
       }
       .sheet(isPresented: $showingTerms) {
         TermsPrivacyView(acceptedTerms: .constant(true), viewingMode: true)

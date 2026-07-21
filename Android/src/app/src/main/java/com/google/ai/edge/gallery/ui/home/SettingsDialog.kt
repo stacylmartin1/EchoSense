@@ -20,42 +20,35 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MultiChoiceSegmentedButtonRow
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,44 +56,27 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.google.ai.edge.gallery.BuildConfig
-import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.proto.Theme
+import com.google.ai.edge.gallery.ui.common.modelitem.ConfirmDeleteModelDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
-import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_ID
+import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_IDS
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
-import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
 import android.util.Log
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.min
 
 private val THEME_OPTIONS = listOf(Theme.THEME_AUTO, Theme.THEME_LIGHT, Theme.THEME_DARK)
 private const val SETTINGS_DIALOG_TAG = "SettingsDialog"
@@ -113,21 +89,21 @@ fun SettingsDialog(
   onDismissed: () -> Unit,
 ) {
   var selectedTheme by remember { mutableStateOf(curThemeOverride) }
-  var isFocused by remember { mutableStateOf(false) }
-  val focusRequester = remember { FocusRequester() }
-  val interactionSource = remember { MutableInteractionSource() }
   var showTos by remember { mutableStateOf(false) }
   var showLicenses by remember { mutableStateOf(false) }
   var showOnlineConnection by remember { mutableStateOf(false) }
+  var showDeleteModelConfirmation by remember { mutableStateOf(false) }
+  var modelMenuExpanded by remember { mutableStateOf(false) }
   
   val context = LocalContext.current
   val modelUiState by modelManagerViewModel.uiState.collectAsState()
   val modelTask = modelUiState.tasks.firstOrNull { task ->
-    task.models.any { it.name == ECHOSENSE_MODEL_ID }
+    task.models.any { it.name in ECHOSENSE_MODEL_IDS }
   }
-  val onDeviceModel = modelTask?.models?.firstOrNull { it.name == ECHOSENSE_MODEL_ID }
+  val echoSenseModels = modelTask?.models?.filter { it.name in ECHOSENSE_MODEL_IDS }.orEmpty()
+  val onDeviceModel = echoSenseModels.firstOrNull { it.name == modelUiState.selectedModel.name }
+    ?: echoSenseModels.firstOrNull()
   val modelDownloadStatus = onDeviceModel?.let { modelUiState.modelDownloadStatus[it.name] }
-  val coroutineScope = rememberCoroutineScope()
   var ttsVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
   var ttsTemp by remember { mutableStateOf<TextToSpeech?>(null) }
 
@@ -162,112 +138,171 @@ fun SettingsDialog(
       onDispose { ttsTemp?.shutdown() }
   }
 
-  Dialog(onDismissRequest = onDismissed) {
-    val focusManager = LocalFocusManager.current
-    Card(
-      modifier =
-        Modifier.fillMaxWidth().clickable(
-          interactionSource = interactionSource,
-          indication = null, // Disable the ripple effect
+  val videoPreviewEnabled by AppSettings.videoPreviewEnabled.collectAsState()
+  val textOverlayEnabled by AppSettings.textOverlayEnabled.collectAsState()
+  val responseStyle by AppSettings.llmResponseStyle.collectAsState()
+  val ttsVoiceName by AppSettings.ttsVoiceName.collectAsState()
+  val safetySpeechRate by AppSettings.safetySpeechRate.collectAsState()
+  val onlineKey by AppSettings.geminiApiKey.collectAsState()
+  val onlineProvider by AppSettings.onlineProvider.collectAsState()
+  val onlineMode by AppSettings.onlineUsageMode.collectAsState()
+  var voiceMenuExpanded by remember { mutableStateOf(false) }
+
+  Dialog(
+    onDismissRequest = onDismissed,
+    properties = DialogProperties(usePlatformDefaultWidth = false),
+  ) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+      Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+          verticalAlignment = Alignment.CenterVertically,
         ) {
-          focusManager.clearFocus()
-        },
-      shape = RoundedCornerShape(16.dp),
-    ) {
-      Column(
-        modifier = Modifier.padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-      ) {
-        // Dialog title and subtitle.
-        Column {
-          Text(
-            "Settings",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 8.dp),
-          )
-          // Subtitle.
-          Text(
-            "App version: ${BuildConfig.VERSION_NAME}",
-            style = labelSmallNarrow,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.offset(y = (-6).dp),
-          )
+          Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+          Spacer(modifier = Modifier.weight(1f))
+          TextButton(onClick = onDismissed) { Text("Done") }
         }
 
         Column(
-          modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false),
-          verticalArrangement = Arrangement.spacedBy(16.dp),
+          modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+          verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-          // Theme switcher.
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              "Theme",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            MultiChoiceSegmentedButtonRow {
-              THEME_OPTIONS.forEachIndexed { index, theme ->
-                SegmentedButton(
-                  shape =
-                    SegmentedButtonDefaults.itemShape(index = index, count = THEME_OPTIONS.size),
-                  onCheckedChange = {
-                    selectedTheme = theme
-
-                    // Update theme settings.
-                    // This will update app's theme.
-                    ThemeSettings.themeOverride.value = theme
-
-                    // Save to data store.
-                    modelManagerViewModel.saveThemeOverride(theme)
-
-                    // Update ui mode.
-                    //
-                    // This is necessary to make other Activities launched from MainActivity to have
-                    // the correct theme.
-                    val uiModeManager =
-                      context.applicationContext.getSystemService(Context.UI_MODE_SERVICE)
-                        as UiModeManager
-                    if (theme == Theme.THEME_AUTO) {
-                      uiModeManager.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
-                    } else if (theme == Theme.THEME_LIGHT) {
-                      uiModeManager.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
-                    } else {
-                      uiModeManager.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
-                    }
-                  },
-                  checked = theme == selectedTheme,
-                  label = { Text(themeLabel(theme)) },
-                )
+          SettingsSection("Output") {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+              Text("Response detail", style = MaterialTheme.typography.bodyLarge)
+              val responseOptions = listOf(LlmResponseStyle.CONCISE, LlmResponseStyle.VERBOSE)
+              MultiChoiceSegmentedButtonRow(modifier = Modifier.padding(top = 8.dp)) {
+                responseOptions.forEachIndexed { index, style ->
+                  SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index, responseOptions.size),
+                    onCheckedChange = {
+                      AppSettings.setLlmResponseStyle(style)
+                      modelManagerViewModel.saveEchoSenseSettings()
+                    },
+                    checked = responseStyle == style,
+                    label = { Text(if (style == LlmResponseStyle.CONCISE) "Concise" else "Verbose") },
+                  )
+                }
               }
+            }
+            SettingsDivider()
+            SettingsToggleRow("Video preview", videoPreviewEnabled) {
+              AppSettings.setVideoPreviewEnabled(it)
+              modelManagerViewModel.saveEchoSenseSettings()
+            }
+            SettingsDivider()
+            SettingsToggleRow("Text overlay", textOverlayEnabled) {
+              AppSettings.setTextOverlayEnabled(it)
+              modelManagerViewModel.saveEchoSenseSettings()
             }
           }
 
-          // EchoSense settings.
-          val videoPreviewEnabled by AppSettings.videoPreviewEnabled.collectAsState()
-          val textOverlayEnabled by AppSettings.textOverlayEnabled.collectAsState()
-          val responseStyle by AppSettings.llmResponseStyle.collectAsState()
-
-          Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-          ) {
-            Text(
-              "On-Device AI Model",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            if (modelTask == null || onDeviceModel == null) {
-              Text(
-                "Model information is temporarily unavailable.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+          SettingsSection("Voice") {
+            if (ttsVoices.isNotEmpty()) {
+              ExposedDropdownMenuBox(
+                expanded = voiceMenuExpanded,
+                onExpandedChange = { voiceMenuExpanded = it },
+              ) {
+                TextButton(
+                  onClick = { voiceMenuExpanded = true },
+                  modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
+                  contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                  Text("TTS voice", color = MaterialTheme.colorScheme.onSurface)
+                  Spacer(Modifier.weight(1f))
+                  val voice = ttsVoices.find { it.name == ttsVoiceName }
+                  Text(
+                    voice?.let(::ttsVoiceLabel) ?: "Default Voice",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1.4f),
+                  )
+                  ExposedDropdownMenuDefaults.TrailingIcon(voiceMenuExpanded)
+                }
+                ExposedDropdownMenu(voiceMenuExpanded, { voiceMenuExpanded = false }) {
+                  DropdownMenuItem(
+                    text = { Text("Default Voice") },
+                    onClick = {
+                      AppSettings.setTtsVoiceName("")
+                      modelManagerViewModel.saveEchoSenseSettings()
+                      voiceMenuExpanded = false
+                    },
+                  )
+                  ttsVoices.forEach { voice ->
+                    DropdownMenuItem(
+                      text = { Text(ttsVoiceLabel(voice), maxLines = 2) },
+                      onClick = {
+                        AppSettings.setTtsVoiceName(voice.name)
+                        modelManagerViewModel.saveEchoSenseSettings()
+                        voiceMenuExpanded = false
+                      },
+                    )
+                  }
+                }
+              }
+              SettingsDivider()
+            }
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Safety speech speed", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.weight(1f))
+                Text("%.2f×".format(Locale.US, safetySpeechRate), color = MaterialTheme.colorScheme.onSurfaceVariant)
+              }
+              Slider(
+                value = safetySpeechRate,
+                onValueChange = AppSettings::setSafetySpeechRate,
+                onValueChangeFinished = modelManagerViewModel::saveEchoSenseSettings,
+                valueRange = 0.8f..1.4f,
+                steps = 11,
               )
+              Text("Changes obstacle announcements only.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+          }
+
+          SettingsSection("On-Device AI Model") {
+            if (modelTask == null || onDeviceModel == null) {
+              Text("Model information is temporarily unavailable.", modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
               val status = modelDownloadStatus?.status ?: ModelDownloadStatusType.NOT_DOWNLOADED
               val modelSizeGb = onDeviceModel.totalBytes.toDouble() / 1_000_000_000.0
-              Text(
-                onDeviceModel.displayName,
-                style = MaterialTheme.typography.bodyMedium,
-              )
-              Text(
+              ExposedDropdownMenuBox(
+                expanded = modelMenuExpanded,
+                onExpandedChange = {
+                  if (status != ModelDownloadStatusType.IN_PROGRESS && status != ModelDownloadStatusType.UNZIPPING) {
+                    modelMenuExpanded = it
+                  }
+                },
+              ) {
+                TextButton(
+                  onClick = { modelMenuExpanded = true },
+                  modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
+                  enabled = status != ModelDownloadStatusType.IN_PROGRESS && status != ModelDownloadStatusType.UNZIPPING,
+                  contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                  Text("Download model", color = MaterialTheme.colorScheme.onSurface)
+                  Spacer(Modifier.weight(1f))
+                  Text(onDeviceModel.displayName, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                  ExposedDropdownMenuDefaults.TrailingIcon(modelMenuExpanded)
+                }
+                ExposedDropdownMenu(modelMenuExpanded, { modelMenuExpanded = false }) {
+                  echoSenseModels.forEach { model ->
+                    DropdownMenuItem(
+                      text = { Text("${model.displayName} · %.1f GB".format(model.totalBytes / 1_000_000_000.0)) },
+                      onClick = {
+                        modelManagerViewModel.selectModel(model)
+                        modelMenuExpanded = false
+                      },
+                    )
+                  }
+                }
+              }
+              SettingsDivider()
+              SettingsValueRow(
+                "Status",
                 when (status) {
                   ModelDownloadStatusType.SUCCEEDED -> "Downloaded and ready"
                   ModelDownloadStatusType.IN_PROGRESS -> "Downloading"
@@ -276,297 +311,110 @@ fun SettingsDialog(
                   ModelDownloadStatusType.FAILED -> "Download failed"
                   ModelDownloadStatusType.NOT_DOWNLOADED -> "Not downloaded · %.1f GB".format(modelSizeGb)
                 },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
-
               if (status == ModelDownloadStatusType.IN_PROGRESS) {
-                val progress =
-                  if ((modelDownloadStatus?.totalBytes ?: 0L) > 0L) {
-                    modelDownloadStatus!!.receivedBytes.toFloat() /
-                      modelDownloadStatus.totalBytes.toFloat()
-                  } else 0f
-                LinearProgressIndicator(
-                  progress = { progress.coerceIn(0f, 1f) },
-                  modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                  "${(progress * 100).toInt()}%",
-                  style = MaterialTheme.typography.bodySmall,
-                  color = MaterialTheme.colorScheme.primary,
-                )
+                val progress = if ((modelDownloadStatus?.totalBytes ?: 0) > 0) {
+                  modelDownloadStatus!!.receivedBytes.toFloat() / modelDownloadStatus.totalBytes.toFloat()
+                } else 0f
+                LinearProgressIndicator({ progress.coerceIn(0f, 1f) }, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+                Text("${(progress * 100).toInt()}%", modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                  color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
               }
-
-              if (status == ModelDownloadStatusType.FAILED &&
-                !modelDownloadStatus?.errorMessage.isNullOrBlank()
-              ) {
-                Text(
-                  modelDownloadStatus?.errorMessage.orEmpty(),
-                  style = MaterialTheme.typography.bodySmall,
-                  color = MaterialTheme.colorScheme.error,
-                )
+              if (status == ModelDownloadStatusType.FAILED && !modelDownloadStatus?.errorMessage.isNullOrBlank()) {
+                Text(modelDownloadStatus?.errorMessage.orEmpty(), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                  color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
               }
-
-              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                when (status) {
-                  ModelDownloadStatusType.SUCCEEDED -> {
-                    OutlinedButton(
-                      onClick = { modelManagerViewModel.deleteModel(modelTask, onDeviceModel) }
-                    ) { Text("Delete Model") }
-                  }
-                  ModelDownloadStatusType.IN_PROGRESS,
-                  ModelDownloadStatusType.UNZIPPING -> {
-                    OutlinedButton(
-                      onClick = {
-                        modelManagerViewModel.cancelDownloadModel(modelTask, onDeviceModel)
-                      }
-                    ) { Text("Cancel Download") }
-                  }
-                  else -> {
-                    Button(
-                      onClick = { modelManagerViewModel.downloadModel(modelTask, onDeviceModel) }
-                    ) {
-                      Text(
-                        if (status == ModelDownloadStatusType.PARTIALLY_DOWNLOADED) {
-                          "Resume Download"
-                        } else {
-                          "Download Model"
-                        }
-                      )
-                    }
-                  }
+              SettingsDivider()
+              when (status) {
+                ModelDownloadStatusType.SUCCEEDED -> SettingsActionRow("Delete downloaded model", destructive = true) {
+                  showDeleteModelConfirmation = true
                 }
-                TextButton(
-                  onClick = {
-                    context.startActivity(
-                      Intent(Intent.ACTION_VIEW, Uri.parse(onDeviceModel.licenseUrl))
-                    )
-                  }
-                ) { Text("License") }
+                ModelDownloadStatusType.IN_PROGRESS, ModelDownloadStatusType.UNZIPPING -> SettingsActionRow("Cancel download") {
+                  modelManagerViewModel.cancelDownloadModel(modelTask, onDeviceModel)
+                }
+                else -> SettingsActionRow(
+                  if (status == ModelDownloadStatusType.PARTIALLY_DOWNLOADED) "Resume download" else "Download model"
+                ) { modelManagerViewModel.downloadModel(modelTask, onDeviceModel) }
+              }
+              SettingsDivider()
+              SettingsActionRow("View model license") {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(onDeviceModel.licenseUrl)))
               }
             }
           }
 
-          // Camera Preview toggle.
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              "Camera Preview",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Text(
-                "Show camera feed on screen",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-              Switch(
-                checked = videoPreviewEnabled,
-                onCheckedChange = {
-                  AppSettings.setVideoPreviewEnabled(it)
-                  modelManagerViewModel.saveEchoSenseSettings()
-                },
-              )
-            }
-          }
-
-          // Text Overlay toggle.
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              "Text Overlay",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Text(
-                "Display analysis text on screen",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-              Switch(
-                checked = textOverlayEnabled,
-                onCheckedChange = {
-                  AppSettings.setTextOverlayEnabled(it)
-                  modelManagerViewModel.saveEchoSenseSettings()
-                },
-              )
-            }
-          }
-
-          // TTS Voice Settings
-          if (ttsVoices.isNotEmpty()) {
-            Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-              Text(
-                  "TTS Voice",
-                  style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-              )
-              val ttsVoiceName by AppSettings.ttsVoiceName.collectAsState()
-              var expanded by remember { mutableStateOf(false) }
-
-              ExposedDropdownMenuBox(
-                  expanded = expanded,
-                  onExpandedChange = { expanded = it },
-                  modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-              ) {
-                  OutlinedButton(
-                      onClick = { expanded = !expanded },
-                      modifier = Modifier.menuAnchor().fillMaxWidth(),
-                      shape = RoundedCornerShape(8.dp)
-                  ) {
-                      val currentName = ttsVoiceName.ifEmpty { "Default Voice" }
-                      val displayName = ttsVoices.find { it.name == currentName }?.let { voice ->
-                          ttsVoiceLabel(voice)
-                      } ?: currentName
-                      Text(
-                          displayName,
-                          modifier = Modifier.weight(1f),
-                          maxLines = 1,
-                          overflow = TextOverflow.Ellipsis,
-                      )
-                      ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                  }
-
-                  ExposedDropdownMenu(
-                      expanded = expanded,
-                      onDismissRequest = { expanded = false }
-                  ) {
-                      DropdownMenuItem(
-                          text = { Text("System Default") },
-                          onClick = {
-                              AppSettings.setTtsVoiceName("")
-                              modelManagerViewModel.saveEchoSenseSettings()
-                              expanded = false
-                          }
-                      )
-                      ttsVoices.forEach { voice ->
-                          DropdownMenuItem(
-                              text = { Text(ttsVoiceLabel(voice), maxLines = 2) },
-                              onClick = {
-                                  AppSettings.setTtsVoiceName(voice.name)
-                                  modelManagerViewModel.saveEchoSenseSettings()
-                                  expanded = false
-                              }
-                          )
-                      }
-                  }
-              }
-            }
-          }
-
-          // Response Detail segmented button.
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              "Response Detail",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            val responseOptions = listOf(LlmResponseStyle.CONCISE, LlmResponseStyle.VERBOSE)
-            MultiChoiceSegmentedButtonRow {
-              responseOptions.forEachIndexed { index, style ->
-                SegmentedButton(
-                  shape =
-                    SegmentedButtonDefaults.itemShape(index = index, count = responseOptions.size),
-                  onCheckedChange = {
-                    AppSettings.setLlmResponseStyle(style)
-                    modelManagerViewModel.saveEchoSenseSettings()
-                  },
-                  checked = responseStyle == style,
-                  label = {
-                    Text(
-                      when (style) {
-                        LlmResponseStyle.CONCISE -> "Concise"
-                        LlmResponseStyle.VERBOSE -> "Verbose"
-                      }
-                    )
-                  },
-                )
-              }
-            }
-          }
-
-
-
-          // Optional online analysis connection.
-          Column(
-            modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-          ) {
-            Text(
-              "Online Analysis",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            val onlineKey by AppSettings.geminiApiKey.collectAsState()
-            val onlineProvider by AppSettings.onlineProvider.collectAsState()
-            val onlineMode by AppSettings.onlineUsageMode.collectAsState()
+          SettingsSection("Online Analysis") {
+            SettingsValueRow("Status", if (onlineKey.isEmpty()) "Not connected" else "Connected")
             if (onlineKey.isNotEmpty()) {
-              Text(
-                "${onlineProvider.displayName} ${AppSettings.maskedOnlineKey()}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-              Text(
-                onlineMode.displayName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-              )
-            } else {
-              Text(
-                "Not set",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-              Text(
-                "Connect a provider for optional online scene analysis.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
+              SettingsDivider()
+              SettingsValueRow("Provider", onlineProvider.displayName)
+              SettingsDivider()
+              SettingsValueRow("Key", AppSettings.maskedOnlineKey())
+              SettingsDivider()
+              SettingsValueRow("Usage", onlineMode.displayName)
             }
-            OutlinedButton(onClick = { showOnlineConnection = true }) {
-              Text(if (onlineKey.isEmpty()) "Connect AI Provider" else "Manage Online Analysis")
+            SettingsDivider()
+            SettingsActionRow(if (onlineKey.isEmpty()) "Connect AI provider" else "Manage online analysis") {
+              showOnlineConnection = true
             }
             Text(
-              "Images are sent only when online analysis is used. Provider charges may apply.",
+              "Online analysis is optional. Images and prompts are sent directly to your provider and may incur charges.",
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
           }
 
-          // Third party licenses.
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              "Third-party licenses",
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            OutlinedButton(onClick = { showLicenses = true }) {
-              Text("View licenses")
+          SettingsSection("Appearance") {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+              Text("Theme", style = MaterialTheme.typography.bodyLarge)
+              MultiChoiceSegmentedButtonRow(modifier = Modifier.padding(top = 8.dp)) {
+                THEME_OPTIONS.forEachIndexed { index, theme ->
+                  SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index, THEME_OPTIONS.size),
+                    onCheckedChange = {
+                      selectedTheme = theme
+                      ThemeSettings.themeOverride.value = theme
+                      modelManagerViewModel.saveThemeOverride(theme)
+                      val manager = context.applicationContext.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                      manager.setApplicationNightMode(
+                        when (theme) {
+                          Theme.THEME_AUTO -> UiModeManager.MODE_NIGHT_AUTO
+                          Theme.THEME_LIGHT -> UiModeManager.MODE_NIGHT_NO
+                          else -> UiModeManager.MODE_NIGHT_YES
+                        }
+                      )
+                    },
+                    checked = theme == selectedTheme,
+                    label = { Text(themeLabel(theme)) },
+                  )
+                }
+              }
             }
           }
 
-          // Tos
-          Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
-            Text(
-              stringResource(R.string.settings_dialog_tos_title),
-              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
-            )
-            OutlinedButton(onClick = { showTos = true }) { Text("View terms and privacy") }
+          SettingsSection("About") {
+            SettingsValueRow("App version", BuildConfig.VERSION_NAME)
+            SettingsDivider()
+            SettingsActionRow("View terms and privacy") { showTos = true }
+            SettingsDivider()
+            SettingsActionRow("View licenses") { showLicenses = true }
           }
-        }
-
-        // Button row.
-        Row(
-          modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-          horizontalArrangement = Arrangement.End,
-        ) {
-          // Close button
-          Button(onClick = { onDismissed() }) { Text("Close") }
+          Spacer(Modifier.height(8.dp))
         }
       }
     }
+  }
+
+  if (showDeleteModelConfirmation && modelTask != null && onDeviceModel != null) {
+    ConfirmDeleteModelDialog(
+      model = onDeviceModel,
+      onConfirm = {
+        modelManagerViewModel.deleteModel(modelTask, onDeviceModel)
+        showDeleteModelConfirmation = false
+      },
+      onDismiss = { showDeleteModelConfirmation = false },
+    )
   }
 
   if (showOnlineConnection) {
@@ -584,6 +432,80 @@ fun SettingsDialog(
   }
 }
 
+@Composable
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(
+      title,
+      modifier = Modifier.padding(horizontal = 4.dp),
+      style = MaterialTheme.typography.labelLarge,
+      color = MaterialTheme.colorScheme.primary,
+    )
+    Card(
+      modifier = Modifier.fillMaxWidth(),
+      shape = RoundedCornerShape(12.dp),
+    ) {
+      Column(content = content)
+    }
+  }
+}
+
+@Composable
+private fun SettingsDivider() {
+  HorizontalDivider(
+    modifier = Modifier.padding(start = 16.dp),
+    color = MaterialTheme.colorScheme.outlineVariant,
+  )
+}
+
+@Composable
+private fun SettingsToggleRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+    Switch(checked = checked, onCheckedChange = onCheckedChange)
+  }
+}
+
+@Composable
+private fun SettingsValueRow(title: String, value: String) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+    Text(
+      value,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      style = MaterialTheme.typography.bodyMedium,
+      maxLines = 2,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+@Composable
+private fun SettingsActionRow(
+  title: String,
+  destructive: Boolean = false,
+  onClick: () -> Unit,
+) {
+  TextButton(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth(),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+  ) {
+    Text(
+      title,
+      modifier = Modifier.fillMaxWidth(),
+      color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+      style = MaterialTheme.typography.bodyLarge,
+    )
+  }
+}
+
 private data class LicenseNotice(
   val name: String,
   val license: String,
@@ -598,9 +520,9 @@ private val THIRD_PARTY_LICENSE_NOTICES =
       notice = "The application code is based on Google AI Edge Gallery and EchoSense modifications. Copyright notices are retained in source files.",
     ),
     LicenseNotice(
-      name = "Gemma / Gemma 3n LiteRT-LM model asset",
-      license = "Gemma Terms of Use",
-      notice = "Downloaded .litertlm model files are subject to the Gemma Terms of Use at ai.google.dev/gemma/terms, including redistribution notice and prohibited-use requirements.",
+      name = "Gemma 4 LiteRT-LM model assets",
+      license = "Apache License 2.0",
+      notice = "The public LiteRT Community Gemma 4 E2B and E4B repositories identify these downloadable artifacts as Apache-2.0 licensed. Model cards and notices are linked from the download controls.",
     ),
     LicenseNotice(
       name = "LiteRT-LM, TensorFlow Lite, and Google AI Edge runtimes",

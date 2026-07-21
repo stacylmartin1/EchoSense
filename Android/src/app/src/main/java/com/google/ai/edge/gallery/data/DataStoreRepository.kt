@@ -62,6 +62,7 @@ interface DataStoreRepository {
       onlineProvider: String,
       onlineUsageMode: String,
       onlineConsentGranted: Boolean,
+      safetySpeechRate: Float,
   )
 }
 
@@ -178,6 +179,7 @@ class DefaultDataStoreRepository(
           .setLlmResponseStyle("concise")
           .setShowDebugOverlay(false)
           .setTtsVoiceName("")
+          .setSafetySpeechRate(1.1f)
           .build()
       } else {
         es
@@ -195,6 +197,7 @@ class DefaultDataStoreRepository(
     onlineProvider: String,
     onlineUsageMode: String,
     onlineConsentGranted: Boolean,
+    safetySpeechRate: Float,
   ) {
     runBlocking {
       dataStore.updateData { settings ->
@@ -210,6 +213,7 @@ class DefaultDataStoreRepository(
               .setOnlineProvider(onlineProvider)
               .setOnlineUsageMode(onlineUsageMode)
               .setOnlineConsentGranted(onlineConsentGranted)
+              .setSafetySpeechRate(safetySpeechRate)
               .build()
           )
           .build()

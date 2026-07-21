@@ -7,7 +7,7 @@ The Android application began as a customization of the open-source Google AI Ed
 ## Features
 
 - **Navigate** describes the current scene and accepts optional voice commands such as “help me find my keys.”
-- **Safety** provides continuous object-proximity warnings while navigating.
+- **Safety** combines object detection with ARCore metric depth and vertical-plane checks when supported, then falls back to camera-relative proximity estimates.
 - **Currency** identifies visible bank notes.
 - **Read** extracts document text from the camera or an imported file and reads it aloud.
 - **Translate** extracts document text and translates it to English.
@@ -26,6 +26,10 @@ Safety warnings are experimental estimates based on camera detections. EchoSense
 - Several gigabytes of free storage for the model download and temporary download parts
 
 The app is currently built only for `arm64-v8a`. An emulator can be useful for basic UI work, but it is not representative of camera, GPU, speech, or LiteRT-LM behavior.
+
+ARCore is optional rather than an installation requirement. On a Depth API-capable phone, turning on Safety temporarily switches Navigation from CameraX to an ARCore-owned preview so it can estimate metric range. Move the phone gently to improve depth-from-motion results. Low light, glass, mirrors, blank walls, and rapidly moving objects can reduce accuracy.
+
+When Navigation submits an image for local or online analysis, it also attaches a compact sensor snapshot containing only recent depth regions and high-confidence object detections. Regional ranges and object labels remain separate so the language model can reconcile them without treating a coarse depth cell as an exact object measurement.
 
 ## Build and run
 
@@ -52,15 +56,11 @@ The debug APK is written beneath `Android/src/app/build/outputs/apk/debug/`.
 
 ## On-device model setup
 
-The large language model is deliberately **not bundled in the APK**. On first run, EchoSense offers to download the recommended model without requiring an account. The same controls remain available under **Settings → On-Device AI Model**.
+The large language model is deliberately **not bundled in the APK**. On first run, EchoSense offers a choice between Gemma 4 E2B (smaller and faster) and E4B (more capable) without requiring an account. The same controls remain available under **Settings → On-Device AI Model**.
 
-The app reads its catalog from:
+Model metadata is pinned in the app to the public, commit-specific Hugging Face download URLs referenced by the Google AI Edge Gallery allowlist. EchoSense does not require its own catalog or model-hosting backend.
 
-```text
-https://models.echosense-ai.app/v1/models.json
-```
-
-Model downloads use background work and parallel HTTPS range requests. Before installation, EchoSense verifies the expected file size and SHA-256 value from the catalog. Users can pause, resume, retry, delete, or manually import a compatible `.litertlm` model from Settings.
+Model downloads use background work and parallel HTTPS range requests. Before installation, EchoSense verifies the expected file size and SHA-256 value. Users can pause, resume, retry, delete, switch between E2B and E4B, or manually import a compatible `.litertlm` model from Settings.
 
 The `verifyNoBundledLlm` Gradle task is attached to `preBuild` and fails the build if a `.litertlm` file is accidentally added to application assets. Small object-detection assets such as `efficientdet_lite2.task` remain bundled because they are part of the real-time Safety feature.
 

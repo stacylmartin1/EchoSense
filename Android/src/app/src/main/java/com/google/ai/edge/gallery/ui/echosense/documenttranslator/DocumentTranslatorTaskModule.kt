@@ -16,7 +16,7 @@ import com.google.ai.edge.gallery.data.Category
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.echosense.createEchoSenseGemmaModel
+import com.google.ai.edge.gallery.ui.echosense.createEchoSenseGemmaModels
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatModelHelper
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import dagger.Module
@@ -33,7 +33,7 @@ class DocumentTranslatorTask @Inject constructor() : CustomTask {
         label = "Document Translator",
         category = Category.ECHOSENSE,
         icon = Icons.Outlined.Translate,
-        models = mutableListOf(createEchoSenseGemmaModel()),
+        models = createEchoSenseGemmaModels().toMutableList(),
         description = "Translate documents to English from photos or files",
         textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
     )

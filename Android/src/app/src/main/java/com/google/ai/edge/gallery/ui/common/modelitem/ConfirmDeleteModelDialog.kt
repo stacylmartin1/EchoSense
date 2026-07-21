@@ -17,7 +17,7 @@
 package com.google.ai.edge.gallery.ui.common.modelitem
 
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,7 +34,11 @@ fun ConfirmDeleteModelDialog(model: Model, onConfirm: () -> Unit, onDismiss: () 
     text = {
       Text(stringResource(R.string.confirm_delete_model_dialog_content).format(model.name))
     },
-    confirmButton = { Button(onClick = onConfirm) { Text(stringResource(R.string.ok)) } },
+    confirmButton = {
+      TextButton(onClick = onConfirm) {
+        Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+      }
+    },
     dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
   )
 }

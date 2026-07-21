@@ -34,6 +34,19 @@ enum class ProximitySeverity {
   INFO, WARNING, URGENT
 }
 
+enum class DepthSurface {
+  UNKNOWN, WALL
+}
+
+/** Confidence-filtered metric range for one third of the visible camera view. */
+data class DepthObservation(
+  val bearing: Bearing,
+  val distanceMeters: Float,
+  val confidence: Float,
+  val surface: DepthSurface = DepthSurface.UNKNOWN,
+  val timestampMs: Long = System.currentTimeMillis(),
+)
+
 /**
  * Obstacle proximity alert data.
  * If metric is true, distanceMeters is populated and isRelativeDepth should be false.

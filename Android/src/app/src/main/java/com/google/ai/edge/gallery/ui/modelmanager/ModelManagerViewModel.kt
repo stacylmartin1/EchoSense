@@ -21,7 +21,6 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.AppLifecycleProvider
-import com.google.ai.edge.gallery.common.getJsonResponse
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
 import com.google.ai.edge.gallery.data.Accelerator
 import com.google.ai.edge.gallery.data.Config
@@ -56,9 +55,9 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "AGModelManagerViewModel"
 private const val TEXT_INPUT_HISTORY_MAX_SIZE = 50
-private const val MODEL_ALLOWLIST_FILENAME = "model_allowlist.json"
 private const val MODEL_ALLOWLIST_TEST_FILENAME = "model_allowlist_test.json"
-private const val MODEL_CATALOG_URL = "https://models.echosense-ai.app/v1/models.json"
+private const val ECHOSENSE_MODEL_PREFS = "echosense_model_selection"
+private const val SELECTED_MODEL_KEY = "selected_model_id"
 
 data class ModelInitializationStatus(
   val status: ModelInitializationStatusType,
@@ -176,6 +175,10 @@ constructor(
   }
 
   fun selectModel(model: Model) {
+    context.getSharedPreferences(ECHOSENSE_MODEL_PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putString(SELECTED_MODEL_KEY, model.name)
+      .apply()
     _uiState.update { _uiState.value.copy(selectedModel = model) }
   }
 
@@ -268,6 +271,17 @@ constructor(
         model.cleanUpAfterInit = false
         Log.d(TAG, "Model '${model.name}' is being initialized. Skipping.")
         return@launch
+      }
+
+      // A model choice is shared by every EchoSense function. Release any other
+      // initialized model before loading this one so E2B and E4B do not compete
+      // for GPU memory after the user switches models.
+      customTasks.forEach { customTask ->
+        customTask.task.models
+          .filter { otherModel -> otherModel.name != model.name && otherModel.instance != null }
+          .forEach { otherModel ->
+            cleanupModel(context = context, task = customTask.task, model = otherModel)
+          }
       }
 
       // Clean up.
@@ -538,7 +552,9 @@ constructor(
     // Load EchoSense settings from DataStore into AppSettings
     loadEchoSenseSettings()
 
-    // Phase 2: Launch background network fetch for additional downloadable models.
+    // Phase 2: retain the upstream test-allowlist hook. Production EchoSense models are pinned
+    // locally to the public URLs referenced by Google AI Edge Gallery, so no EchoSense backend
+    // catalog is required.
     viewModelScope.launch(Dispatchers.IO) {
       try {
         if (migrateLegacyBundledModel(curTasks)) {
@@ -552,24 +568,8 @@ constructor(
         modelAllowlist = readModelAllowlistFromDisk(fileName = MODEL_ALLOWLIST_TEST_FILENAME)
 
         if (modelAllowlist == null) {
-          // Load the shared EchoSense model catalog from R2.
-          val url = MODEL_CATALOG_URL
-          Log.d(TAG, "Loading model allowlist from internet. Url: $url")
-          val data = getJsonResponse<ModelAllowlist>(url = url)
-          modelAllowlist = data?.jsonObj
-
-          if (modelAllowlist == null) {
-            Log.w(TAG, "Failed to load model allowlist from internet. Trying to load it from disk")
-            modelAllowlist = readModelAllowlistFromDisk()
-          } else {
-            Log.d(TAG, "Done: loading model allowlist from internet")
-            saveModelAllowlistToDisk(modelAllowlistContent = data?.textContent ?: "{}")
-          }
-        }
-
-        if (modelAllowlist == null) {
-          // Non-blocking: just log warning, don't set error state
-          Log.w(TAG, "Could not load model catalog. Continuing with cached model metadata.")
+          Log.d(TAG, "Using embedded Google AI Edge model metadata")
+          processPendingDownloads()
           return@launch
         }
 
@@ -638,20 +638,7 @@ constructor(
     lifecycleProvider.isAppInForeground = foreground
   }
 
-  private fun saveModelAllowlistToDisk(modelAllowlistContent: String) {
-    try {
-      Log.d(TAG, "Saving model allowlist to disk...")
-      val file = File(externalFilesDir, MODEL_ALLOWLIST_FILENAME)
-      file.writeText(modelAllowlistContent)
-      Log.d(TAG, "Done: saving model allowlist to disk.")
-    } catch (e: Exception) {
-      Log.e(TAG, "failed to write model allowlist to disk", e)
-    }
-  }
-
-  private fun readModelAllowlistFromDisk(
-    fileName: String = MODEL_ALLOWLIST_FILENAME
-  ): ModelAllowlist? {
+  private fun readModelAllowlistFromDisk(fileName: String): ModelAllowlist? {
     try {
       Log.d(TAG, "Reading model allowlist from disk: $fileName")
       val baseDir =
@@ -672,7 +659,7 @@ constructor(
     return null
   }
 
-  /** Reuses the model copied by older builds instead of forcing a 3.4 GB redownload. */
+  /** Reuses the model copied by older builds instead of forcing a multi-gigabyte redownload. */
   private fun migrateLegacyBundledModel(tasks: List<Task>): Boolean {
     val model = tasks.asSequence().flatMap { it.models.asSequence() }
       .firstOrNull { it.sha256.isNotEmpty() } ?: return false
@@ -782,8 +769,14 @@ constructor(
       .filter { it.name != EMPTY_MODEL.name }
       .toList()
     val previousSelection = _uiState.value.selectedModel
+    val persistedSelection = context.getSharedPreferences(ECHOSENSE_MODEL_PREFS, Context.MODE_PRIVATE)
+      .getString(SELECTED_MODEL_KEY, null)
     val selectedModel =
       availableModels.firstOrNull { it.name == previousSelection.name }
+        ?: availableModels.firstOrNull { it.name == persistedSelection }
+        ?: availableModels.firstOrNull {
+          modelDownloadStatus[it.name]?.status == ModelDownloadStatusType.SUCCEEDED
+        }
         ?: availableModels.firstOrNull()
 
     Log.d(TAG, "model download status: $modelDownloadStatus")

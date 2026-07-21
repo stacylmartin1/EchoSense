@@ -7,7 +7,7 @@ The iOS app is written in SwiftUI and shares the EchoSense workflow and model ca
 ## Features
 
 - **Navigate** describes the current scene and accepts optional voice commands such as “help me find my keys.”
-- **Safety** continuously detects nearby objects and speaks proximity warnings.
+- **Safety** combines object detection with synchronized LiDAR range data on supported iPhones, identifies broad wall-like surfaces, and falls back to camera-relative proximity estimates.
 - **Currency** identifies visible bank notes.
 - **Read** extracts text from the camera, photos, and imported documents and reads it aloud.
 - **Translate** extracts document text and translates it to English.
@@ -50,17 +50,17 @@ xcodebuild \
 
 Simulator builds can help with layout work, but they do not validate the physical camera pipeline, realistic memory limits, GPU inference, microphone input, or speech output.
 
+On LiDAR-equipped devices, the existing AVFoundation camera session selects the rear LiDAR camera and synchronizes filtered depth with video. Safety reports metric distance in left, center, and right view regions without starting a competing ARKit camera session. Other iPhones continue using the original object-size estimate.
+
+When Navigation submits an image for local or online analysis, it also attaches a compact sensor snapshot containing only recent depth regions and high-confidence object detections. Regional ranges and object labels remain separate so the language model can reconcile them without treating a coarse depth cell as an exact object measurement.
+
 ## On-device model setup
 
-The large language model is deliberately **not included in the application bundle**. On first run, EchoSense offers to download the recommended model without requiring an account. Model controls are also available under **Settings → On-Device AI Model**.
+The large language model is deliberately **not included in the application bundle**. On first run, EchoSense offers a choice between Gemma 4 E2B (smaller and faster) and E4B (more capable) without requiring an account. Model controls are also available under **Settings → On-Device AI Model**.
 
-The app reads its catalog from:
+Model metadata is pinned in the app to the public, commit-specific Hugging Face download URLs referenced by the Google AI Edge Gallery allowlist. EchoSense does not require its own catalog or model-hosting backend.
 
-```text
-https://models.echosense-ai.app/v1/models.json
-```
-
-Downloads use background `URLSession` tasks and parallel HTTPS range requests. EchoSense checks available storage and verifies the completed model's expected size and SHA-256 value before moving it into Application Support. Users can pause, resume, retry, delete, or import a compatible `.litertlm` model from Files.
+Downloads use background `URLSession` tasks and parallel HTTPS range requests. EchoSense checks available storage and verifies the completed model's expected size and SHA-256 value before moving it into Application Support. Users can pause, resume, retry, delete, switch between E2B and E4B, or import a compatible `.litertlm` model from Files.
 
 Do not add `.litertlm` or other large LLM files to the app target. The small Core ML object-detection models under `EchoSenseiOS/Resources` are intentionally bundled for Safety processing.
 

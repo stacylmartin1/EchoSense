@@ -52,6 +52,7 @@ object AppSettings {
   val onlineConsentGranted: MutableStateFlow<Boolean> = MutableStateFlow(false)
   val cloudPromptRequested: MutableStateFlow<Boolean> = MutableStateFlow(false)
   val ttsVoiceName: MutableStateFlow<String> = MutableStateFlow("")
+  val safetySpeechRate: MutableStateFlow<Float> = MutableStateFlow(1.1f)
 
   fun setLlmResponseStyle(style: LlmResponseStyle) {
     llmResponseStyle.value = style
@@ -71,6 +72,10 @@ object AppSettings {
 
   fun setTtsVoiceName(name: String) {
     ttsVoiceName.value = name
+  }
+
+  fun setSafetySpeechRate(rate: Float) {
+    safetySpeechRate.value = rate.coerceIn(0.8f, 1.4f)
   }
 
   fun loadFrom(repository: DataStoreRepository, context: Context) {
@@ -93,6 +98,7 @@ object AppSettings {
         ?: OnlineUsageMode.ASK
     onlineConsentGranted.value = settings.onlineConsentGranted
     ttsVoiceName.value = settings.ttsVoiceName ?: ""
+    safetySpeechRate.value = settings.safetySpeechRate.takeIf { it > 0f } ?: 1.1f
     llmResponseStyle.value = when (settings.llmResponseStyle) {
       "verbose" -> LlmResponseStyle.VERBOSE
       else -> LlmResponseStyle.CONCISE
@@ -114,6 +120,7 @@ object AppSettings {
       onlineProvider = onlineProvider.value.storageValue,
       onlineUsageMode = onlineUsageMode.value.storageValue,
       onlineConsentGranted = onlineConsentGranted.value,
+      safetySpeechRate = safetySpeechRate.value,
     )
   }
 
@@ -168,4 +175,5 @@ object AppSettings {
   fun observeShowDebugOverlay(): StateFlow<Boolean> = showDebugOverlay
   fun observeGeminiApiKey(): StateFlow<String> = geminiApiKey
   fun observeTtsVoiceName(): StateFlow<String> = ttsVoiceName
+  fun observeSafetySpeechRate(): StateFlow<Float> = safetySpeechRate
 }

@@ -41,8 +41,9 @@
   <string name="ok" translatable="false">OK</string>
   <string name="close" translatable="false">Close</string>
   <string name="error" translatable="false">Error</string>
-  <string name="confirm_delete_model_dialog_title" translatable="false">Delete download</string>
-  <string name="confirm_delete_model_dialog_content" translatable="false">Are you sure you want to delete the downloaded model \"%s\"?</string>
+  <string name="delete" translatable="false">Delete</string>
+  <string name="confirm_delete_model_dialog_title" translatable="false">Delete downloaded model?</string>
+  <string name="confirm_delete_model_dialog_content" translatable="false">Delete \"%s\"? You will need to download the model again before on-device analysis can use it.</string>
   <string name="conversation_reset_message" translatable="false">Conversation was reset</string>
   <string name="engin_reset_message" translatable="false">Engine was reset</string>
   <string name="notification_title_success" translatable="false">Model download succeeded</string>

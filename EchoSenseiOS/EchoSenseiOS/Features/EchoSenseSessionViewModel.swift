@@ -20,6 +20,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   @Published var proximityBoxes: [DetectionBox] = []
   @Published var collisionAvoidanceEnabled = false
   @Published var collisionAvoidanceAvailable = false
+  @Published var depthSensingDescription = "Camera estimate"
+  @Published var analysisSensorContext = ""
   @Published var isLocalModelReady = false
   @Published var hasStagedLocalModel = false
 
@@ -38,8 +40,13 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var lastAlertTime: Date = .distantPast
   private var lastAlertBearing: Bearing?
   private var lastAlertSeverity: ProximitySeverity?
+  private var lastAlertDistanceMeters: Float?
+  private var candidateAlert: ProximityAlert?
+  private var candidateAlertSince: Date?
   private var lastDetectionSubmitTime: Date = .distantPast
+  private var lastDetectionResultsTime: Date = .distantPast
   private var lastDetectionTimestampMilliseconds = 0
+  private var latestDepthObservations: [DepthObservation] = []
   private var hasAnnouncedStartupStatus = false
   private var isActive = false
   private var startupAnnouncementTask: Task<Void, Never>?
@@ -49,6 +56,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var hasAttemptedPersistedModelLoad = false
   private var stagedLocalModelURL: URL?
   private var settings: AppSettings?
+  private var safetyAnnouncementsSuspendedForAnalysis = false
 
   init(feature: EchoSenseFeature) {
     self.feature = feature
@@ -98,6 +106,9 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     lastAlertTime = .distantPast
     lastAlertBearing = nil
     lastAlertSeverity = nil
+    lastAlertDistanceMeters = nil
+    candidateAlert = nil
+    candidateAlertSince = nil
     hasAnnouncedStartupStatus = false
     collisionAvoidanceAvailable = objectDetector.isAvailable
     collisionAvoidanceEnabled = newFeature.supportsCollisionAvoidance && objectDetector.isAvailable
@@ -117,6 +128,9 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     if !collisionAvoidanceEnabled {
       proximityBoxes = []
       proximityAlert = nil
+      latestDepthObservations = []
+      lastDetectionResultsTime = .distantPast
+      resetSafetyAnnouncementState()
     }
     announceAccessibility("Collision avoidance \(collisionAvoidanceEnabled ? "on" : "off").")
   }
@@ -136,6 +150,9 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     latestSampleBuffer = nil
     proximityBoxes = []
     proximityAlert = nil
+    latestDepthObservations = []
+    lastDetectionResultsTime = .distantPast
+    resetSafetyAnnouncementState()
     camera.stop()
     speech.stop()
   }
@@ -241,10 +258,12 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     forceOnline: Bool = false
   ) async {
     Self.logger.notice("Analysis task entered for feature: \(self.feature.rawValue, privacy: .public)")
+    suspendSafetyAnnouncementsForAnalysis()
     isAnalyzing = true
     transcript = ""
     defer {
       Self.logger.notice("Analysis task exited")
+      resumeSafetyAnnouncementsAfterAnalysis()
       isAnalyzing = false
       analysisStage = ""
     }
@@ -296,7 +315,10 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
 
       case .navigation:
         try Task.checkCancellation()
+        let sensorSnapshot = sensorPromptSnapshot()
+        analysisSensorContext = sensorContextSummary(for: sensorSnapshot)
         let prompt = Prompts.navigation(customPrompt: customPrompt, style: settings.responseStyle)
+          + sensorSnapshot
         try await runVisionAnalysis(
           prompt: prompt,
           image: image,
@@ -311,6 +333,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       errorMessage = error.localizedDescription
       speech.announce(error.localizedDescription)
       announceAccessibility(error.localizedDescription)
+      await speech.waitUntilFinished()
     }
   }
 
@@ -539,6 +562,21 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     try Task.checkCancellation()
     transcript = result
     speakResult(result, accessibilitySummary: "Online analysis complete.")
+    await speech.waitUntilFinished()
+    try Task.checkCancellation()
+  }
+
+  private func suspendSafetyAnnouncementsForAnalysis() {
+    guard feature == .navigation else { return }
+    safetyAnnouncementsSuspendedForAnalysis = true
+    speech.setSafetyAnnouncementsSuspended(true)
+  }
+
+  private func resumeSafetyAnnouncementsAfterAnalysis() {
+    guard safetyAnnouncementsSuspendedForAnalysis else { return }
+    safetyAnnouncementsSuspendedForAnalysis = false
+    speech.setSafetyAnnouncementsSuspended(false)
+    resetSafetyAnnouncementState()
   }
 
   private func beginUserInitiatedWork() {
@@ -662,6 +700,12 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       return
     }
     proximityBoxes = boxes
+    lastDetectionResultsTime = Date()
+    if let metricAlert = metricAlert(from: latestDepthObservations, boxes: boxes) {
+      proximityAlert = metricAlert
+      maybeSpeakProximity(metricAlert)
+      return
+    }
     guard let best = boxes.max(by: { $0.height < $1.height }) else {
       proximityAlert = nil
       return
@@ -679,36 +723,186 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     maybeSpeakProximity(alert)
   }
 
+  private func handleDepthObservations(_ observations: [DepthObservation]) {
+    guard collisionAvoidanceAvailable, collisionAvoidanceEnabled else { return }
+    latestDepthObservations = observations
+    guard let alert = metricAlert(from: observations, boxes: proximityBoxes) else { return }
+    proximityAlert = alert
+    maybeSpeakProximity(alert)
+  }
+
+  private func metricAlert(
+    from observations: [DepthObservation],
+    boxes: [DetectionBox]
+  ) -> ProximityAlert? {
+    let recent = observations.filter { Date().timeIntervalSince($0.timestamp) < 1.0 && $0.confidence >= 0.20 }
+    guard let nearest = recent.min(by: { $0.distanceMeters < $1.distanceMeters }) else { return nil }
+    let matchingBox = boxes
+      .filter { bearing(fromCenterXNormalized: $0.centerXNormalized) == nearest.bearing }
+      .max(by: { $0.height < $1.height })
+    let label: String
+    if nearest.surface == .wall {
+      label = "Wall"
+    } else if let matchingBox, !matchingBox.label.isEmpty {
+      label = matchingBox.label
+    } else {
+      label = "Obstacle"
+    }
+    return ProximityAlert(
+      label: label,
+      severity: severity(forDistanceMeters: nearest.distanceMeters),
+      bearing: nearest.bearing,
+      distanceMeters: nearest.distanceMeters
+    )
+  }
+
+  /// Freezes a compact, recent sensor summary at the same boundary as the submitted image.
+  /// Regional depth and object detections stay separate because a coarse range cell cannot
+  /// prove that a particular detection produced that depth value.
+  private func sensorPromptSnapshot(now: Date = Date()) -> String {
+    guard feature == .navigation, collisionAvoidanceEnabled else { return "" }
+    let recentDepth = latestDepthObservations
+      .filter { now.timeIntervalSince($0.timestamp) < 1.2 && $0.confidence >= 0.20 }
+    let objects = (now.timeIntervalSince(lastDetectionResultsTime) < 1.2 ? proximityBoxes : [])
+      .filter { $0.score >= 0.35 }
+      .sorted {
+        let leftArea = $0.width * $0.height
+        let rightArea = $1.width * $1.height
+        return leftArea == rightArea ? $0.score > $1.score : leftArea > rightArea
+      }
+      .prefix(5)
+
+    guard !recentDepth.isEmpty || !objects.isEmpty else { return "" }
+    var lines = [
+      "",
+      "<SENSOR_SNAPSHOT>",
+      "Captured near the image timestamp. Advisory only; reconcile it with visible evidence and do not invent precision.",
+    ]
+    if !recentDepth.isEmpty {
+      let regions = recentDepth.map { observation in
+        let surface = observation.surface == .wall ? ", wall-like surface" : ""
+        return String(
+          format: "%@ %.1f m (confidence %.0f%%%@)",
+          observation.bearing.rawValue,
+          observation.distanceMeters,
+          observation.confidence * 100,
+          surface
+        )
+      }
+      lines.append("Depth source: \(depthSensingDescription). Regions: \(regions.joined(separator: "; ")).")
+    }
+    if !objects.isEmpty {
+      let detections = objects.map { box in
+        let bearing = bearing(fromCenterXNormalized: box.centerXNormalized).rawValue
+        let apparentDepth = 1 - min(1, Float(box.height) / Float(max(1, box.imageHeight)))
+        let proximity = apparentDepth <= 0.20 ? "near" : apparentDepth <= 0.40 ? "mid-range" : "farther"
+        return String(format: "%@ %@ (%@, %.0f%%)", box.label.isEmpty ? "obstacle" : box.label, bearing, proximity, box.score * 100)
+      }
+      lines.append("Object detector: \(detections.joined(separator: "; ")). Apparent proximity is image-size based, not metric range.")
+    }
+    lines.append("Use sensor data to improve obstacle, wall, pathway, and distance guidance. If sensor and image disagree, state uncertainty briefly.")
+    lines.append("</SENSOR_SNAPSHOT>")
+    return lines.joined(separator: "\n")
+  }
+
+  private func sensorContextSummary(for snapshot: String) -> String {
+    guard !snapshot.isEmpty else {
+      return "Analysis context: image only — turn on Safety for range and object context"
+    }
+    var sources: [String] = []
+    if snapshot.contains("Depth source:") { sources.append("metric range") }
+    if snapshot.contains("Object detector:") { sources.append("detected objects") }
+    return "Analysis context: " + sources.joined(separator: " + ")
+  }
+
   private func maybeSpeakProximity(_ alert: ProximityAlert) {
-    let elapsed = Date().timeIntervalSince(lastAlertTime)
+    guard !safetyAnnouncementsSuspendedForAnalysis else { return }
+    let now = Date()
+    let elapsed = now.timeIntervalSince(lastAlertTime)
     let sameBearing = alert.bearing == lastAlertBearing
     let sameSeverity = alert.severity == lastAlertSeverity
     let escalated = alert.severity.rawValue > (lastAlertSeverity?.rawValue ?? -1)
+    let materiallyCloser = {
+      guard let previous = lastAlertDistanceMeters,
+            let current = alert.distanceMeters else { return false }
+      return previous - current >= 0.5
+    }()
 
     if !escalated {
-      if sameBearing && sameSeverity && elapsed < 2.5 { return }
-      if !sameBearing && elapsed < 1.2 { return }
+      if !sameBearing || !sameSeverity {
+        let sameCandidate = candidateAlert?.bearing == alert.bearing &&
+          candidateAlert?.severity == alert.severity
+        if !sameCandidate {
+          candidateAlert = alert
+          candidateAlertSince = now
+          return
+        }
+        guard let candidateAlertSince,
+              now.timeIntervalSince(candidateAlertSince) >= 0.4,
+              elapsed >= 1.0 else { return }
+      } else if materiallyCloser {
+        candidateAlert = nil
+        candidateAlertSince = nil
+        guard elapsed >= 1.2 else { return }
+      } else if elapsed < 4.5 {
+        candidateAlert = nil
+        candidateAlertSince = nil
+        return
+      } else {
+        candidateAlert = nil
+        candidateAlertSince = nil
+      }
     }
+    candidateAlert = nil
+    candidateAlertSince = nil
 
     let label = alert.label.isEmpty ? "Obstacle" : alert.label
+    let roundedDistance = alert.distanceMeters.map { (Double($0) * 2).rounded() / 2 }
+    let range = roundedDistance.map { String(format: " %.1f meters", $0) } ?? ""
     let phrase: String
     switch (alert.severity, alert.bearing) {
     case (.urgent, .left): phrase = "Stop. \(label) left."
     case (.urgent, .center): phrase = "Stop. \(label) ahead."
     case (.urgent, .right): phrase = "Stop. \(label) right."
-    case (.warning, .left): phrase = "Caution, \(label) left."
-    case (.warning, .center): phrase = "Caution, \(label) ahead."
-    case (.warning, .right): phrase = "Caution, \(label) right."
-    case (.info, .left): phrase = "\(label) left."
-    case (.info, .center): phrase = "\(label) ahead."
-    case (.info, .right): phrase = "\(label) right."
+    case (.warning, .left): phrase = "Caution, \(label)\(range) left."
+    case (.warning, .center): phrase = "Caution, \(label)\(range) ahead."
+    case (.warning, .right): phrase = "Caution, \(label)\(range) right."
+    case (.info, .left): phrase = "\(label)\(range) left."
+    case (.info, .center): phrase = "\(label)\(range) ahead."
+    case (.info, .right): phrase = "\(label)\(range) right."
     }
 
-    speech.announce(phrase)
-    announceAccessibility(phrase)
-    lastAlertTime = Date()
+    playSafetyHaptic(for: alert.severity)
+    speech.announceSafety(
+      phrase,
+      severity: alert.severity,
+      rateMultiplier: settings?.safetySpeechRate ?? 1.1,
+      followUpText: alert.severity == .urgent
+        ? roundedDistance.map { String(format: "About %.1f meters.", $0) }
+        : nil
+    )
+    // Do not also post a VoiceOver announcement here: that would run a
+    // second speech engine over the dedicated Safety voice output.
+    lastAlertTime = now
     lastAlertBearing = alert.bearing
     lastAlertSeverity = alert.severity
+    lastAlertDistanceMeters = alert.distanceMeters
+  }
+
+  private func playSafetyHaptic(for severity: ProximitySeverity) {
+    guard severity != .info else { return }
+    let generator = UINotificationFeedbackGenerator()
+    generator.prepare()
+    generator.notificationOccurred(severity == .urgent ? .error : .warning)
+  }
+
+  private func resetSafetyAnnouncementState() {
+    lastAlertTime = .distantPast
+    lastAlertBearing = nil
+    lastAlertSeverity = nil
+    lastAlertDistanceMeters = nil
+    candidateAlert = nil
+    candidateAlertSince = nil
   }
 }
 
@@ -724,6 +918,19 @@ private extension Array {
 }
 
 extension EchoSenseSessionViewModel: CameraFrameSourceDelegate {
+  nonisolated func cameraFrameSource(_ source: CameraFrameSource, depthAvailabilityDidChange isAvailable: Bool) {
+    Task { @MainActor in
+      depthSensingDescription = isAvailable ? "LiDAR depth" : "Camera estimate"
+    }
+  }
+
+  nonisolated func cameraFrameSource(_ source: CameraFrameSource, didUpdateDepth observations: [DepthObservation]) {
+    Task { @MainActor in
+      guard isActive else { return }
+      handleDepthObservations(observations)
+    }
+  }
+
   nonisolated func cameraFrameSource(_ source: CameraFrameSource, authorizationDidChange status: AVAuthorizationStatus) {
     Task { @MainActor in
       switch status {

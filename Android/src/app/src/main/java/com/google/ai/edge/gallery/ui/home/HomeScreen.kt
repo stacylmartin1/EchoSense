@@ -130,7 +130,7 @@ import com.google.ai.edge.gallery.ui.common.TaskIcon
 import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
-import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_ID
+import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_IDS
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
 import com.google.ai.edge.gallery.ui.theme.homePageTitleStyle
@@ -584,8 +584,10 @@ fun HomeScreen(
     )
   }
 
-  val modelTask = tasks.firstOrNull { task -> task.models.any { it.name == ECHOSENSE_MODEL_ID } }
-  val onboardingModel = modelTask?.models?.firstOrNull { it.name == ECHOSENSE_MODEL_ID }
+  val modelTask = tasks.firstOrNull { task -> task.models.any { it.name in ECHOSENSE_MODEL_IDS } }
+  val onboardingModels = modelTask?.models?.filter { it.name in ECHOSENSE_MODEL_IDS }.orEmpty()
+  val onboardingModel = onboardingModels.firstOrNull { it.name == uiState.selectedModel.name }
+    ?: onboardingModels.firstOrNull()
   val onboardingStatus = onboardingModel?.let { uiState.modelDownloadStatus[it.name] }
   LaunchedEffect(onboardingStatus?.status) {
     if (onboardingStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
@@ -606,8 +608,20 @@ fun HomeScreen(
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text(
-            "EchoSense uses a one-time 3.4 GB download for private, on-device visual assistance. No account is required."
+            "Choose a Gemma 4 model for private, on-device visual assistance. No account is required."
           )
+          if (!isDownloading) {
+            onboardingModels.forEach { model ->
+              val size = model.totalBytes.toDouble() / 1_000_000_000.0
+              TextButton(
+                onClick = { modelManagerViewModel.selectModel(model) },
+                modifier = Modifier.fillMaxWidth(),
+              ) {
+                val selected = model.name == onboardingModel.name
+                Text("${if (selected) "✓ " else ""}${model.displayName} · %.1f GB".format(size))
+              }
+            }
+          }
           if (isDownloading) {
             val progress =
               if (onboardingStatus.totalBytes > 0) {
@@ -627,7 +641,10 @@ fun HomeScreen(
               modelManagerViewModel.downloadModel(modelTask, onboardingModel)
             }
           }
-        ) { Text(if (isDownloading) "Continue in Background" else "Download Model — 3.4 GB") }
+        ) {
+          val size = onboardingModel.totalBytes.toDouble() / 1_000_000_000.0
+          Text(if (isDownloading) "Continue in Background" else "Download — %.1f GB".format(size))
+        }
       },
       dismissButton = {
         if (!isDownloading) {

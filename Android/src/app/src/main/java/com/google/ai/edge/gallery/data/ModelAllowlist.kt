@@ -13,7 +13,7 @@ data class DefaultConfig(
   val maxTokens: Int? = null,
 )
 
-/** Cross-platform model descriptor served by models.echosense-ai.app. */
+/** Cross-platform model descriptor used for test or imported catalogs. */
 data class AllowedModel(
   val id: String,
   val displayName: String,

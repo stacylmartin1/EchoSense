@@ -109,6 +109,10 @@ struct FeatureSessionView: View {
       if let activeModelName = viewModel.activeModelName {
         Text(activeModelName)
       }
+      if viewModel.feature == .navigation, !viewModel.analysisSensorContext.isEmpty {
+        Text(viewModel.analysisSensorContext)
+          .foregroundStyle(.secondary)
+      }
       if let error = viewModel.errorMessage {
         Text(error)
           .foregroundStyle(.red)
@@ -125,7 +129,7 @@ struct FeatureSessionView: View {
   private var resultOverlay: some View {
     VStack(alignment: .leading, spacing: 6) {
       if let alert = viewModel.proximityAlert {
-        Label("\(alert.label) \(alert.bearing.rawValue)", systemImage: "exclamationmark.triangle.fill")
+        Label(proximityText(alert), systemImage: "exclamationmark.triangle.fill")
           .font(.callout.bold())
           .foregroundStyle(alert.severity == .urgent ? .red : .orange)
       }
@@ -370,10 +374,20 @@ struct FeatureSessionView: View {
     if let activeModelName = viewModel.activeModelName {
       parts.append(activeModelName)
     }
+    if viewModel.feature == .navigation, !viewModel.analysisSensorContext.isEmpty {
+      parts.append(viewModel.analysisSensorContext)
+    }
     if let error = viewModel.errorMessage {
       parts.append(error)
     }
     return parts.joined(separator: ", ")
+  }
+
+  private func proximityText(_ alert: ProximityAlert) -> String {
+    if let distance = alert.distanceMeters {
+      return "\(alert.label) \(String(format: "%.1f m", distance)) \(alert.bearing.rawValue) · \(viewModel.depthSensingDescription)"
+    }
+    return "\(alert.label) \(alert.bearing.rawValue)"
   }
 
   private var resultAccessibilityLabel: String {

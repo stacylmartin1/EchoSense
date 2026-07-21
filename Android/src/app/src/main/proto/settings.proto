@@ -74,6 +74,8 @@ message EchoSenseSettings {
   // "ask", "fallback", or "prefer_online"
   string online_usage_mode = 8;
   bool online_consent_granted = 9;
+  // Multiplier applied only to collision-avoidance speech.
+  float safety_speech_rate = 10;
 }
 
 message Settings {

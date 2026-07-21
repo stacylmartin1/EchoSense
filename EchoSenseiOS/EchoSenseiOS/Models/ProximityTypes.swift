@@ -12,6 +12,22 @@ enum ProximitySeverity: Int {
   case urgent = 2
 }
 
+enum DepthSurface: String, Equatable {
+  case unknown
+  case wall
+}
+
+/// A coarse, confidence-filtered range sample for one third of the camera view.
+/// Keeping this independent of a specific depth SDK lets Safety combine metric
+/// ranging with object labels while retaining the monocular fallback.
+struct DepthObservation: Equatable {
+  var bearing: Bearing
+  var distanceMeters: Float
+  var confidence: Float
+  var surface: DepthSurface
+  var timestamp = Date()
+}
+
 struct DetectionBox: Identifiable, Equatable {
   let id = UUID()
   var label: String
@@ -55,3 +71,10 @@ func severity(forRelativeDepth relativeDepth: Float) -> ProximitySeverity {
   }
 }
 
+func severity(forDistanceMeters distanceMeters: Float) -> ProximitySeverity {
+  switch distanceMeters {
+  case ...1.0: .urgent
+  case ...2.0: .warning
+  default: .info
+  }
+}

@@ -116,6 +116,7 @@ private val ECHOSENSE_TERMS_AND_PRIVACY =
 
   Some features may use Google or Android services:
 
+  - Safety depth sensing uses Google Play Services for AR (ARCore), which is provided by Google LLC and governed by the [Google Privacy Policy](https://policies.google.com/privacy). ARCore is optional; EchoSense falls back to camera-only estimates when it is unavailable.
   - ML Kit OCR, language identification, and translation may use Google Play services or download language/model packs.
   - If you connect and use an online AI provider, the images, document text, prompts, and related content needed for that request are sent directly to the selected provider and handled under that provider's terms. Provider charges may apply.
   - Android system text-to-speech, speech recognition, camera, audio, and accessibility services are provided by the device or OS vendor and may have their own settings and privacy behavior.

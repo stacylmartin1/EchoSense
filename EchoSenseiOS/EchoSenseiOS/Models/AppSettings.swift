@@ -81,6 +81,10 @@ final class AppSettings: ObservableObject {
     didSet { UserDefaults.standard.set(selectedVoiceIdentifier, forKey: Keys.selectedVoiceIdentifier) }
   }
 
+  @Published var safetySpeechRate: Double {
+    didSet { UserDefaults.standard.set(safetySpeechRate, forKey: Keys.safetySpeechRate) }
+  }
+
   @Published var cloudProvider: CloudProvider {
     didSet { UserDefaults.standard.set(cloudProvider.rawValue, forKey: Keys.cloudProvider) }
   }
@@ -107,6 +111,7 @@ final class AppSettings: ObservableObject {
     videoPreviewEnabled = defaults.object(forKey: Keys.videoPreviewEnabled) as? Bool ?? true
     textOverlayEnabled = defaults.object(forKey: Keys.textOverlayEnabled) as? Bool ?? true
     selectedVoiceIdentifier = defaults.string(forKey: Keys.selectedVoiceIdentifier) ?? ""
+    safetySpeechRate = defaults.object(forKey: Keys.safetySpeechRate) as? Double ?? 1.1
     let savedProvider = CloudProvider(rawValue: defaults.string(forKey: Keys.cloudProvider) ?? "") ?? .none
     let legacyKey = defaults.string(forKey: Keys.cloudAPIKey) ?? ""
     var secureKey = (try? CloudKeychain.load()) ?? ""
@@ -168,6 +173,7 @@ final class AppSettings: ObservableObject {
     static let videoPreviewEnabled = "echosense.videoPreviewEnabled"
     static let textOverlayEnabled = "echosense.textOverlayEnabled"
     static let selectedVoiceIdentifier = "echosense.selectedVoiceIdentifier"
+    static let safetySpeechRate = "echosense.safetySpeechRate"
     static let cloudProvider = "echosense.cloudProvider"
     static let cloudAPIKey = "echosense.cloudAPIKey"
     static let cloudUsageMode = "echosense.cloudUsageMode"

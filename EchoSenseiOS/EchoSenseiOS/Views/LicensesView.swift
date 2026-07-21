@@ -24,7 +24,7 @@ struct LicensesView: View {
 
   private let licenses: [(name: String, license: String, notice: String)] = [
     ("EchoSense app code", "Apache License 2.0", "Application code and EchoSense modifications retain source notices."),
-    ("Gemma / local LLM model assets", "Gemma Terms or model-specific terms", "Downloaded or imported LLM files must follow their model licenses and redistribution requirements."),
+    ("Gemma 4 LiteRT-LM model assets", "Apache License 2.0", "The public LiteRT Community E2B and E4B repositories identify these downloadable artifacts as Apache-2.0 licensed. Imported models remain subject to their own terms."),
     ("MediaPipe Tasks iOS SDK", "Apache License 2.0", "Used for local object detection and local AI task integration."),
     ("EfficientDet Lite object detector", "Apache License 2.0", "Used for collision-avoidance object detection."),
     ("Apple Vision, AVFoundation, Speech, and AVSpeechSynthesizer", "Apple platform terms", "Used for OCR, camera, speech input, and speech output.")

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ModelSetupView: View {
   @EnvironmentObject private var modelDownloads: ModelDownloadManager
@@ -15,8 +16,29 @@ struct ModelSetupView: View {
         VStack(spacing: 8) {
           Text("Download On-Device AI")
             .font(.title.bold())
-          Text("EchoSense uses a one-time 3.4 GB download for private, on-device visual assistance. No account is required.")
+          Text("Choose a Gemma 4 model for private, on-device visual assistance. No account is required.")
             .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
+        }
+
+        if modelDownloads.availableModels.count > 1 {
+          Picker("AI model", selection: Binding(
+            get: { modelDownloads.selectedModelID },
+            set: { modelDownloads.selectModel(id: $0) }
+          )) {
+            ForEach(modelDownloads.availableModels) { model in
+              Text(model.displayName).tag(model.id)
+            }
+          }
+          .pickerStyle(.segmented)
+          .disabled(isDownloadActive)
+        }
+
+        if let model = modelDownloads.availableModel {
+          Text(model.id.contains("e2b")
+            ? "Smaller and faster · \(formattedSize(model.sizeBytes))"
+            : "More capable, with higher memory use · \(formattedSize(model.sizeBytes))")
+            .font(.callout)
             .foregroundStyle(.secondary)
         }
 
@@ -44,6 +66,13 @@ struct ModelSetupView: View {
           Link("View model license", destination: licenseURL)
             .font(.footnote)
         }
+
+#if DEBUG
+        Button("Copy Download Diagnostics") {
+          UIPasteboard.general.string = modelDownloads.downloadDiagnosticReport
+        }
+        .font(.footnote)
+#endif
       }
       .padding(24)
       .navigationTitle("AI Model")
@@ -68,7 +97,7 @@ struct ModelSetupView: View {
       Button("Continue") { dismiss() }
         .buttonStyle(.borderedProminent)
     default:
-      Button("Download Model — 3.4 GB") { Task { await modelDownloads.startDownload() } }
+      Button(downloadButtonTitle) { Task { await modelDownloads.startDownload() } }
         .buttonStyle(.borderedProminent)
         .disabled(modelDownloads.availableModel == nil)
       if allowsDeferral {
@@ -76,5 +105,18 @@ struct ModelSetupView: View {
           .buttonStyle(.bordered)
       }
     }
+  }
+
+  private var isDownloadActive: Bool {
+    modelDownloads.phase == .downloading || modelDownloads.phase == .paused || modelDownloads.phase == .verifying
+  }
+
+  private var downloadButtonTitle: String {
+    guard let model = modelDownloads.availableModel else { return "Download Model" }
+    return "Download \(model.displayName) — \(formattedSize(model.sizeBytes))"
+  }
+
+  private func formattedSize(_ bytes: Int64) -> String {
+    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
   }
 }

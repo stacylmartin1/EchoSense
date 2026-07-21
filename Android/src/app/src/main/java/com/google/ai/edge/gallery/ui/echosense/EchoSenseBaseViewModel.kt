@@ -23,6 +23,8 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.os.VibrationEffect
+import android.os.VibratorManager
 import android.util.Log
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.ViewModel
@@ -104,6 +106,9 @@ abstract class EchoSenseBaseViewModel(
 
     protected val _isAnalyzing = MutableStateFlow(false)
     val isAnalyzing: StateFlow<Boolean> = _isAnalyzing
+
+    private val _areSafetyAlertsSuppressed = MutableStateFlow(false)
+    val areSafetyAlertsSuppressed: StateFlow<Boolean> = _areSafetyAlertsSuppressed
 
     protected val _activeModelName = MutableStateFlow<String?>(null)
     val activeModelName: StateFlow<String?> = _activeModelName
@@ -204,6 +209,7 @@ abstract class EchoSenseBaseViewModel(
         cancelInferenceJob()
 
         sentenceChunker.clear()
+        suspendSafetyAlertsForAnalysis()
         ttsPlayer.stop()
         promptOnlineAfterSpeech.set(false)
 
@@ -259,6 +265,7 @@ abstract class EchoSenseBaseViewModel(
         sentenceChunker.clear()
         ttsPlayer.stop()
         promptOnlineAfterSpeech.set(false)
+        resumeSafetyAlertsAfterAnalysis()
 
         _objectDescription.value = ""
         llmTextBuffer.clear()
@@ -397,6 +404,7 @@ abstract class EchoSenseBaseViewModel(
         if (model == null) {
             _error.value = "Model not set. Please wait for model to be selected."
             imageProxy.close()
+            resumeSafetyAlertsAfterAnalysis()
             return
         }
 
@@ -420,12 +428,14 @@ abstract class EchoSenseBaseViewModel(
                 Log.e(TAG, "Failed to convert ImageProxy to bitmap")
                 _error.value = "Unable to process camera image"
                 imageProxy.close()
+                resumeSafetyAlertsAfterAnalysis()
                 return
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error creating Bitmap from ImageProxy", e)
             _error.value = "Error processing camera image: ${e.message}"
             imageProxy.close()
+            resumeSafetyAlertsAfterAnalysis()
             return
         }
 
@@ -445,16 +455,19 @@ abstract class EchoSenseBaseViewModel(
         val model = currentModel
         if (model == null) {
             _error.value = "Model not set. Please wait for model to be selected."
+            resumeSafetyAlertsAfterAnalysis()
             return
         }
 
         // Downscale if needed to avoid OOM / native crashes in the LLM engine
         val scaledBitmap = scaleBitmapToMaxSize(bitmap, LLM_MAX_IMAGE_SIZE)
+        val sensorSnapshot = buildSensorPromptSnapshot()
+        _analysisSensorContext.value = sensorContextSummary(sensorSnapshot)
 
         val canUseOnline =
             OnlineAnalysisHelper.isAvailable() && AppSettings.onlineConsentGranted.value
         if (canUseOnline && (forceOnline || AppSettings.onlineUsageMode.value == OnlineUsageMode.PREFER_ONLINE)) {
-            analyzeBitmapOnline(scaledBitmap)
+            analyzeBitmapOnline(scaledBitmap, sensorSnapshot = sensorSnapshot)
             return
         }
 
@@ -489,6 +502,7 @@ abstract class EchoSenseBaseViewModel(
                     if (model.instance == null) {
                         Log.w(TAG, "Model instance is null, cannot analyze image")
                         _error.value = "Model not ready. Please wait for model to initialize."
+                        resumeSafetyAlertsAfterAnalysis()
                         return@launch
                     }
 
@@ -515,7 +529,10 @@ abstract class EchoSenseBaseViewModel(
                 val responseStyle = AppSettings.llmResponseStyle.value
                 val isVerbose = responseStyle == LlmResponseStyle.VERBOSE
 
-                val prompt = getAnalysisPrompt(customPrompt, isVerbose)
+                val prompt = appendSensorSnapshot(
+                    getAnalysisPrompt(customPrompt, isVerbose),
+                    sensorSnapshot,
+                )
                 // Clear customPrompt after use so subsequent analyses use the default prompt
                 customPrompt = null
 
@@ -568,6 +585,7 @@ abstract class EchoSenseBaseViewModel(
                             analyzeBitmapOnline(scaledBitmap, prompt)
                         } else {
                             _error.value = "Error: $errorMessage"
+                            resumeSafetyAlertsAfterAnalysis()
                         }
                     }
                 )
@@ -575,14 +593,22 @@ abstract class EchoSenseBaseViewModel(
                 Log.e(TAG, "Error firing usage or launching inference", e)
                 _error.value = "Error analyzing image: ${e.message}"
                 _isAnalyzing.value = false
+                resumeSafetyAlertsAfterAnalysis()
             }
         }
     }
 
-    private fun analyzeBitmapOnline(bitmap: Bitmap, promptOverride: String? = null) {
+    private fun analyzeBitmapOnline(
+        bitmap: Bitmap,
+        promptOverride: String? = null,
+        sensorSnapshot: String? = null,
+    ) {
         if (!_isProcessing.value || _isAnalyzing.value || !OnlineAnalysisHelper.isAvailable()) return
         val isVerbose = AppSettings.llmResponseStyle.value == LlmResponseStyle.VERBOSE
-        val prompt = promptOverride ?: getAnalysisPrompt(customPrompt, isVerbose)
+        val prompt = promptOverride ?: appendSensorSnapshot(
+            getAnalysisPrompt(customPrompt, isVerbose),
+            sensorSnapshot ?: buildSensorPromptSnapshot(),
+        )
         customPrompt = null
         _isAnalyzing.value = true
         _activeModelName.value = AppSettings.onlineProvider.value.displayName
@@ -600,6 +626,7 @@ abstract class EchoSenseBaseViewModel(
                 _error.value = e.message ?: "Online analysis failed"
                 _isAnalyzing.value = false
                 inferenceJob = null
+                resumeSafetyAlertsAfterAnalysis()
             }
         }
     }
@@ -789,17 +816,27 @@ abstract class EchoSenseBaseViewModel(
     private val _isCollisionAvoidanceEnabled = MutableStateFlow(false)
     val isCollisionAvoidanceEnabled: StateFlow<Boolean> = _isCollisionAvoidanceEnabled
 
+    private val _depthSensingDescription = MutableStateFlow("Camera estimate")
+    val depthSensingDescription: StateFlow<String> = _depthSensingDescription
+    private val _analysisSensorContext = MutableStateFlow("")
+    val analysisSensorContext: StateFlow<String> = _analysisSensorContext
+    private var latestDepthObservations: List<DepthObservation> = emptyList()
+    @Volatile private var lastProximityBoxesAtMs = 0L
+    private val proximityAnalysisInFlight = AtomicBoolean(false)
+
     private var lastAlertTs: Long = 0L
     private var lastAlertBearing: Bearing? = null
     private var lastAlertSeverity: ProximitySeverity? = null
+    private var lastAlertDistanceMeters: Float? = null
+    private var candidateAlertBearing: Bearing? = null
+    private var candidateAlertSeverity: ProximitySeverity? = null
+    private var candidateAlertSinceMs: Long = 0L
 
     /**
      * Minimum interval before re-announcing the SAME bearing+severity combo.
      * A different bearing or escalated severity can bypass this sooner.
      */
-    private val sameAlertCooldownMs: Long = 3500L
-    /** Shorter cooldown when the bearing changes (obstacle moved left→right etc.) */
-    private val differentBearingCooldownMs: Long = 1500L
+    private val sameAlertCooldownMs: Long = 4500L
 
     fun toggleCollisionAvoidance() {
         _isCollisionAvoidanceEnabled.value = !_isCollisionAvoidanceEnabled.value
@@ -807,7 +844,100 @@ abstract class EchoSenseBaseViewModel(
             _proximityBoxes.value = emptyList()
             _proximityBest.value = null
             _proximityAlert.value = null
+            latestDepthObservations = emptyList()
+            lastProximityBoxesAtMs = 0L
+            ttsPlayer.clearPendingSafetyAnnouncements()
+            resetSafetyAnnouncementState()
         }
+    }
+
+    fun updateDepthAvailability(available: Boolean, reason: String? = null) {
+        _depthSensingDescription.value = if (available) "ARCore depth" else "Camera estimate"
+        if (!available) latestDepthObservations = emptyList()
+        if (!available && !reason.isNullOrBlank()) Log.i(TAG, "ARCore depth unavailable: $reason")
+    }
+
+    fun updateDepthObservations(observations: List<DepthObservation>) {
+        if (!supportsCollisionAvoidance || !_isCollisionAvoidanceEnabled.value) return
+        latestDepthObservations = observations
+        if (!_areSafetyAlertsSuppressed.value) publishMetricAlert(_proximityBoxes.value)
+    }
+
+    private fun buildSensorPromptSnapshot(nowMs: Long = System.currentTimeMillis()): String? {
+        if (!supportsCollisionAvoidance || !_isCollisionAvoidanceEnabled.value) return null
+        val depth = latestDepthObservations
+            .filter { nowMs - it.timestampMs < 1_200L && it.confidence >= 0.20f }
+            .sortedBy { it.bearing.ordinal }
+        val objects = (if (nowMs - lastProximityBoxesAtMs < 1_200L) _proximityBoxes.value else emptyList())
+            .filter { it.score >= 0.35f }
+            .sortedWith(
+                compareByDescending<DetectionBox> { it.width * it.height }
+                    .thenByDescending { it.score },
+            )
+            .take(5)
+        if (depth.isEmpty() && objects.isEmpty()) return null
+
+        val lines = mutableListOf(
+            "<SENSOR_SNAPSHOT>",
+            "Captured near the image timestamp. Advisory only; reconcile it with visible evidence and do not invent precision.",
+        )
+        if (depth.isNotEmpty()) {
+            val regions = depth.joinToString("; ") { observation ->
+                val surface = if (observation.surface == DepthSurface.WALL) ", wall-like surface" else ""
+                "%s %.1f m (confidence %.0f%%%s)".format(
+                    Locale.US,
+                    observation.bearing.name.lowercase(Locale.US),
+                    observation.distanceMeters,
+                    observation.confidence * 100f,
+                    surface,
+                )
+            }
+            lines += "Depth source: ${_depthSensingDescription.value}. Regions: $regions."
+        }
+        if (objects.isNotEmpty()) {
+            val detections = objects.joinToString("; ") { box ->
+                val apparentDepth = 1f - kotlin.math.min(
+                    1f,
+                    box.height.toFloat() / kotlin.math.max(1, box.imageHeight).toFloat(),
+                )
+                val proximity = when {
+                    apparentDepth <= 0.20f -> "near"
+                    apparentDepth <= 0.40f -> "mid-range"
+                    else -> "farther"
+                }
+                "%s %s (%s, %.0f%%)".format(
+                    Locale.US,
+                    box.label.ifBlank { "obstacle" },
+                    bearingFromCenterXNorm(box.centerXNormalized()).name.lowercase(Locale.US),
+                    proximity,
+                    box.score * 100f,
+                )
+            }
+            lines += "Object detector: $detections. Apparent proximity is image-size based, not metric range."
+        }
+        lines += "Use sensor data to improve obstacle, wall, pathway, and distance guidance. If sensor and image disagree, state uncertainty briefly."
+        lines += "</SENSOR_SNAPSHOT>"
+        return lines.joinToString("\n")
+    }
+
+    private fun appendSensorSnapshot(prompt: String, snapshot: String?): String =
+        if (snapshot.isNullOrBlank()) prompt else "$prompt\n$snapshot"
+
+    private fun sensorContextSummary(snapshot: String?): String {
+        if (snapshot.isNullOrBlank()) {
+            return "Analysis context: image only — turn on Safety for range and object context"
+        }
+        val sources = buildList {
+            if (snapshot.contains("Depth source:")) add("metric range")
+            if (snapshot.contains("Object detector:")) add("detected objects")
+        }
+        return "Analysis context: ${sources.joinToString(" + ")}"
+    }
+
+    fun reportDepthCameraNotReady() {
+        _error.value = "Depth camera is starting. Please try again."
+        stopProcessing()
+        ttsPlayer.announceStatus("Depth camera is starting. Please try again.")
     }
 
     /**
@@ -835,53 +965,7 @@ abstract class EchoSenseBaseViewModel(
                 return
             }
 
-            val boxes = detectionHelper.detect(rotatedBitmap)
-            _proximityBoxes.value = boxes
-            
-            if (boxes.isEmpty()) {
-                _proximityBest.value = null
-                imageProxy.close()
-                return
-            }
-
-            // Find "best" (most urgent) box based on corridor and depth
-            var best: Pair<DetectionBox, Float>? = null
-            for (b in boxes) {
-                val cx = b.centerXNormalized()
-                val cy = b.centerYNormalized()
-                val inCorridor = isInsideCorridor(cx, cy)
-                val relDepth = 1f - kotlin.math.min(1f, b.height.toFloat() / kotlin.math.max(1, b.imageHeight).toFloat())
-                // Score favors objects in corridor and closer (lower relDepth)
-                val score = (if (inCorridor) 1.0f else 0.8f) * (1.0f - relDepth)
-                if (best == null || score > best.second) {
-                    best = Pair(b, score)
-                }
-            }
-
-            val (box, _) = best ?: run {
-                _proximityBest.value = null
-                imageProxy.close()
-                return
-            }
-
-            _proximityBest.value = box
-
-            val cxn = box.centerXNormalized()
-            val bearing = bearingFromCenterXNorm(cxn)
-            val rel = 1f - kotlin.math.min(1f, box.height.toFloat() / kotlin.math.max(1, box.imageHeight).toFloat())
-            val severity = severityForRelativeDepth(rel)
-            val label = if (box.label.isNotBlank()) box.label else "Obstacle"
-
-            val alert = ProximityAlert(
-                label = label,
-                severity = severity,
-                bearing = bearing,
-                distanceMeters = null,
-                relativeDepth = rel,
-            )
-
-            maybeSpeakProximity(alert)
-            _proximityAlert.value = alert
+            analyzeProximityBitmap(rotatedBitmap)
 
         } catch (e: Exception) {
             Log.e(TAG, "analyzeProximity error: ${e.message}")
@@ -890,24 +974,141 @@ abstract class EchoSenseBaseViewModel(
         }
     }
 
+    /** Analyze an ARCore camera frame while ARCore owns the camera for Depth API use. */
+    fun analyzeProximityBitmap(bitmap: Bitmap) {
+        if (
+            !supportsCollisionAvoidance ||
+            !_isCollisionAvoidanceEnabled.value ||
+            _areSafetyAlertsSuppressed.value
+        ) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return
+        }
+        if (!proximityAnalysisInFlight.compareAndSet(false, true)) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                if (!detectionHelper.isEnabled()) return@launch
+                val boxes = detectionHelper.detect(bitmap)
+                if (!_isCollisionAvoidanceEnabled.value || _areSafetyAlertsSuppressed.value) return@launch
+                _proximityBoxes.value = boxes
+                lastProximityBoxesAtMs = System.currentTimeMillis()
+                if (publishMetricAlert(boxes)) return@launch
+
+                if (boxes.isEmpty()) {
+                    _proximityBest.value = null
+                    _proximityAlert.value = null
+                    return@launch
+                }
+
+                var best: Pair<DetectionBox, Float>? = null
+                for (box in boxes) {
+                    val relativeDepth = 1f - kotlin.math.min(
+                        1f,
+                        box.height.toFloat() / kotlin.math.max(1, box.imageHeight).toFloat(),
+                    )
+                    val score = (if (isInsideCorridor(box.centerXNormalized(), box.centerYNormalized())) 1f else 0.8f) *
+                        (1f - relativeDepth)
+                    if (best == null || score > best!!.second) best = box to score
+                }
+                val box = best?.first ?: return@launch
+                _proximityBest.value = box
+                val relativeDepth = 1f - kotlin.math.min(
+                    1f,
+                    box.height.toFloat() / kotlin.math.max(1, box.imageHeight).toFloat(),
+                )
+                val alert = ProximityAlert(
+                    label = box.label.ifBlank { "Obstacle" },
+                    severity = severityForRelativeDepth(relativeDepth),
+                    bearing = bearingFromCenterXNorm(box.centerXNormalized()),
+                    relativeDepth = relativeDepth,
+                )
+                maybeSpeakProximity(alert)
+                _proximityAlert.value = alert
+            } catch (error: Exception) {
+                Log.e(TAG, "analyzeProximityBitmap failed", error)
+            } finally {
+                if (!bitmap.isRecycled) bitmap.recycle()
+                proximityAnalysisInFlight.set(false)
+            }
+        }
+    }
+
+    private fun publishMetricAlert(boxes: List<DetectionBox>): Boolean {
+        if (_areSafetyAlertsSuppressed.value) return false
+        val now = System.currentTimeMillis()
+        val nearest = latestDepthObservations
+            .filter { now - it.timestampMs < 1_000L && it.confidence >= 0.2f }
+            .minByOrNull { it.distanceMeters }
+            ?: return false
+        val matchingBox = boxes
+            .filter { bearingFromCenterXNorm(it.centerXNormalized()) == nearest.bearing }
+            .maxByOrNull { it.height }
+        _proximityBest.value = matchingBox
+        val label = when {
+            nearest.surface == DepthSurface.WALL -> "Wall"
+            matchingBox != null -> matchingBox.label.ifBlank { "Obstacle" }
+            else -> "Obstacle"
+        }
+        val alert = ProximityAlert(
+            label = label,
+            severity = severityForMetric(nearest.distanceMeters),
+            bearing = nearest.bearing,
+            distanceMeters = nearest.distanceMeters,
+        )
+        maybeSpeakProximity(alert)
+        _proximityAlert.value = alert
+        return true
+    }
+
     private fun maybeSpeakProximity(alert: ProximityAlert) {
+        if (_areSafetyAlertsSuppressed.value) return
         val now = System.currentTimeMillis()
         val elapsed = now - lastAlertTs
 
         val sameBearing = alert.bearing == lastAlertBearing
         val sameSeverity = alert.severity == lastAlertSeverity
         val escalated = severityRank(alert.severity) > severityRank(lastAlertSeverity)
+        val materiallyCloser = lastAlertDistanceMeters?.let { previous ->
+            alert.distanceMeters?.let { current -> previous - current >= 0.5f }
+        } == true
 
         // ── Hysteresis logic ──
         // 1. If severity escalated (e.g. INFO→WARNING or WARNING→URGENT), always speak immediately.
         // 2. If bearing changed, use a shorter cooldown.
         // 3. If same bearing+severity, use a longer cooldown.
         if (!escalated) {
-            if (sameBearing && sameSeverity && elapsed < sameAlertCooldownMs) return
-            if (!sameBearing && elapsed < differentBearingCooldownMs) return
+            if (!sameBearing || !sameSeverity) {
+                val sameCandidate = candidateAlertBearing == alert.bearing &&
+                    candidateAlertSeverity == alert.severity
+                if (!sameCandidate) {
+                    candidateAlertBearing = alert.bearing
+                    candidateAlertSeverity = alert.severity
+                    candidateAlertSinceMs = now
+                    return
+                }
+                if (now - candidateAlertSinceMs < 400L || elapsed < 1_000L) return
+            } else if (materiallyCloser) {
+                candidateAlertBearing = null
+                candidateAlertSeverity = null
+                if (elapsed < 1_200L) return
+            } else if (elapsed < sameAlertCooldownMs) {
+                candidateAlertBearing = null
+                candidateAlertSeverity = null
+                return
+            } else {
+                candidateAlertBearing = null
+                candidateAlertSeverity = null
+            }
         }
+        candidateAlertBearing = null
+        candidateAlertSeverity = null
 
         val label = if (alert.label.isNotBlank()) alert.label else "Obstacle"
+        val roundedDistance = alert.distanceMeters?.let { kotlin.math.round(it * 2f) / 2f }
+        val range = roundedDistance?.let { " %.1f meters".format(Locale.US, it) }.orEmpty()
         val phrase = when (alert.severity) {
             ProximitySeverity.URGENT -> when (alert.bearing) {
                 Bearing.LEFT -> "Stop. $label left."
@@ -915,23 +1116,73 @@ abstract class EchoSenseBaseViewModel(
                 Bearing.RIGHT -> "Stop. $label right."
             }
             ProximitySeverity.WARNING -> when (alert.bearing) {
-                Bearing.LEFT -> "Caution, $label left."
-                Bearing.CENTER -> "Caution, $label ahead."
-                Bearing.RIGHT -> "Caution, $label right."
+                Bearing.LEFT -> "Caution, $label$range left."
+                Bearing.CENTER -> "Caution, $label$range ahead."
+                Bearing.RIGHT -> "Caution, $label$range right."
             }
             ProximitySeverity.INFO -> when (alert.bearing) {
-                Bearing.LEFT -> "$label left."
-                Bearing.CENTER -> "$label ahead."
-                Bearing.RIGHT -> "$label right."
+                Bearing.LEFT -> "$label$range left."
+                Bearing.CENTER -> "$label$range ahead."
+                Bearing.RIGHT -> "$label$range right."
             }
         }
 
-        // Always flush-speak so the newest proximity alert wins over stale speech.
-        ttsPlayer.announceStatus(phrase)
+        playSafetyHaptic(alert.severity)
+        val urgentRangeFollowUp = if (alert.severity == ProximitySeverity.URGENT) {
+            roundedDistance?.let { "About %.1f meters.".format(Locale.US, it) }
+        } else {
+            null
+        }
+        ttsPlayer.announceSafety(
+            phrase,
+            alert.severity,
+            AppSettings.safetySpeechRate.value,
+            urgentRangeFollowUp,
+        )
 
         lastAlertTs = now
         lastAlertBearing = alert.bearing
         lastAlertSeverity = alert.severity
+        lastAlertDistanceMeters = alert.distanceMeters
+    }
+
+    private fun playSafetyHaptic(severity: ProximitySeverity) {
+        if (severity == ProximitySeverity.INFO) return
+        try {
+            val vibrator = application.getSystemService(VibratorManager::class.java)?.defaultVibrator
+            val effect = if (severity == ProximitySeverity.URGENT) {
+                VibrationEffect.EFFECT_DOUBLE_CLICK
+            } else {
+                VibrationEffect.EFFECT_HEAVY_CLICK
+            }
+            vibrator?.vibrate(VibrationEffect.createPredefined(effect))
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to play Safety haptic", error)
+        }
+    }
+
+    private fun suspendSafetyAlertsForAnalysis() {
+        if (!supportsCollisionAvoidance) return
+        _areSafetyAlertsSuppressed.value = true
+        _proximityAlert.value = null
+        ttsPlayer.setSafetyAnnouncementsSuspended(true)
+    }
+
+    private fun resumeSafetyAlertsAfterAnalysis() {
+        if (!_areSafetyAlertsSuppressed.value) return
+        _areSafetyAlertsSuppressed.value = false
+        ttsPlayer.setSafetyAnnouncementsSuspended(false)
+        resetSafetyAnnouncementState()
+    }
+
+    private fun resetSafetyAnnouncementState() {
+        lastAlertTs = 0L
+        lastAlertBearing = null
+        lastAlertSeverity = null
+        lastAlertDistanceMeters = null
+        candidateAlertBearing = null
+        candidateAlertSeverity = null
+        candidateAlertSinceMs = 0L
     }
 
     private fun severityRank(s: ProximitySeverity?): Int = when (s) {

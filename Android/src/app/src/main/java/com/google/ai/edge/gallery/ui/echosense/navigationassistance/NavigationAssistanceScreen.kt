@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,6 +65,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.home.OnlineConnectionDialog
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
+import com.google.ai.edge.gallery.ui.echosense.ARCoreDepthCameraView
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.delay
@@ -83,19 +85,37 @@ fun NavigationAssistanceScreen(
             .setTargetResolution(android.util.Size(768, 768))
             .build()
     }
+    var depthCameraView by remember { mutableStateOf<ARCoreDepthCameraView?>(null) }
+    var depthUnavailable by remember { mutableStateOf(false) }
+    var depthCameraActivated by remember { mutableStateOf(false) }
+
+    val isCollisionAvoidanceEnabled by viewModel.isCollisionAvoidanceEnabled.collectAsState()
+    val useDepthCamera = depthCameraActivated && !depthUnavailable
+
+    LaunchedEffect(isCollisionAvoidanceEnabled) {
+        if (isCollisionAvoidanceEnabled) depthCameraActivated = true
+    }
 
     val captureAndAnalyze = {
-        imageCapture.takePicture(
-            ContextCompat.getMainExecutor(context),
-            object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(imageProxy: ImageProxy) {
-                    viewModel.analyzeImage(imageProxy)
+        val depthFrame = if (useDepthCamera) depthCameraView?.captureCurrentFrame() else null
+        if (depthFrame != null) {
+            viewModel.analyzeBitmap(depthFrame)
+        } else if (useDepthCamera) {
+            viewModel.reportDepthCameraNotReady()
+        } else {
+            imageCapture.takePicture(
+                ContextCompat.getMainExecutor(context),
+                object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(imageProxy: ImageProxy) {
+                        viewModel.analyzeImage(imageProxy)
+                    }
+                    override fun onError(exception: ImageCaptureException) {
+                        Log.e(TAG, "Image capture failed", exception)
+                        viewModel.stopProcessing()
+                    }
                 }
-                override fun onError(exception: ImageCaptureException) {
-                    Log.e(TAG, "Image capture failed", exception)
-                }
-            }
-        )
+            )
+        }
     }
 
     var hasCameraPermission by remember {
@@ -128,6 +148,7 @@ fun NavigationAssistanceScreen(
     // Original state flows
     val isProcessing by viewModel.isProcessing.collectAsState()
     val isAnalyzing by viewModel.isAnalyzing.collectAsState()
+    val areSafetyAlertsSuppressed by viewModel.areSafetyAlertsSuppressed.collectAsState()
     val objectDescription by viewModel.objectDescription.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
     val onlineKey by AppSettings.geminiApiKey.collectAsState()
@@ -145,11 +166,14 @@ fun NavigationAssistanceScreen(
     // Collision avoidance state flows
     val boxes by viewModel.proximityBoxes.collectAsState()
     val bestBox by viewModel.proximityBest.collectAsState()
-    val isCollisionAvoidanceEnabled by viewModel.isCollisionAvoidanceEnabled.collectAsState()
+    val proximityAlert by viewModel.proximityAlert.collectAsState()
+    val analysisSensorContext by viewModel.analysisSensorContext.collectAsState()
 
     LaunchedEffect(key1 = true) {
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         if (!hasAudioPermission) audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    LaunchedEffect(useDepthCamera, depthCameraView) {
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
     }
 
@@ -176,48 +200,89 @@ fun NavigationAssistanceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Navigation Assistance") },
+                title = {
+                    Column {
+                        Text("Navigation Assistance")
+                        if (analysisSensorContext.isNotEmpty()) {
+                            Text(
+                                analysisSensorContext,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
             )
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             if (hasCameraPermission) {
-                AndroidView(
-                    factory = { ctx ->
-                        val previewView = PreviewView(ctx)
-                        val cameraProvider = cameraProviderFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
-
-                        // Proximity detector — paused while LLM is running to avoid
-                        // GPU/NPU resource contention that causes native crashes.
-                        val imageAnalysis = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .build().also { analysis ->
-                                analysis.setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
-                                    // Skip proximity frames while the LLM is actively analyzing
-                                    // to avoid resource contention with the inference engine.
-                                    if (viewModel.isAnalyzing.value) {
-                                        proxy.close()
-                                        return@setAnalyzer
-                                    }
-                                    try { viewModel.analyzeProximity(proxy) }
-                                    catch (t: Throwable) { Log.e(TAG, "Analyzer error", t) }
-                                    // analyzeProximity closes proxy
+                if (useDepthCamera) {
+                    AndroidView(
+                        factory = { ctx ->
+                            ARCoreDepthCameraView(ctx).also { view ->
+                                depthCameraView = view
+                                view.setSafetyProcessingEnabled(isCollisionAvoidanceEnabled)
+                                view.onDepthAvailabilityChanged = { available, reason ->
+                                    viewModel.updateDepthAvailability(available, reason)
+                                    depthUnavailable = !available
                                 }
+                                view.onDepthObservations = viewModel::updateDepthObservations
+                                view.onCameraFrame = viewModel::analyzeProximityBitmap
+                                view.attach(lifecycleOwner)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { view ->
+                            view.setSafetyProcessingEnabled(isCollisionAvoidanceEnabled)
+                        },
+                        onRelease = { view ->
+                            if (depthCameraView === view) depthCameraView = null
+                            view.detach()
+                        },
+                    )
+                } else {
+                    AndroidView(
+                        factory = { ctx ->
+                            val previewView = PreviewView(ctx)
+                            val cameraProvider = cameraProviderFuture.get()
+                            val preview = Preview.Builder().build().also {
+                                it.setSurfaceProvider(previewView.surfaceProvider)
                             }
 
-                        try {
-                            cameraProvider.unbindAll()
-                            cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, imageAnalysis)
-                        } catch (exc: Exception) {
-                            Log.e(TAG, "Use case binding failed", exc)
-                        }
-                        previewView
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                            // Proximity detector — paused while LLM is running to avoid
+                            // GPU/NPU resource contention that causes native crashes.
+                            val imageAnalysis = ImageAnalysis.Builder()
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build().also { analysis ->
+                                    analysis.setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
+                                        if (viewModel.isAnalyzing.value) {
+                                            proxy.close()
+                                            return@setAnalyzer
+                                        }
+                                        try { viewModel.analyzeProximity(proxy) }
+                                        catch (t: Throwable) { Log.e(TAG, "Analyzer error", t) }
+                                    }
+                                }
+
+                            try {
+                                cameraProvider.unbindAll()
+                                cameraProvider.bindToLifecycle(
+                                    lifecycleOwner,
+                                    CameraSelector.DEFAULT_BACK_CAMERA,
+                                    preview,
+                                    imageCapture,
+                                    imageAnalysis,
+                                )
+                            } catch (exc: Exception) {
+                                Log.e(TAG, "Use case binding failed", exc)
+                            }
+                            previewView
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        onRelease = { cameraProviderFuture.get().unbindAll() },
+                    )
+                }
                 if (!videoPreviewOn) {
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black))
                 }
@@ -259,6 +324,25 @@ fun NavigationAssistanceScreen(
                         .verticalScroll(scrollState)
                         .semantics { liveRegion = LiveRegionMode.Polite },
                     color = Color.White
+                )
+            }
+
+            proximityAlert?.takeUnless { areSafetyAlertsSuppressed }?.let { alert ->
+                val distance = alert.distanceMeters?.let { " · %.1f m".format(it) }.orEmpty()
+                val rangeSource = if (alert.distanceMeters != null) "ARCore range" else "Camera estimate"
+                Text(
+                    text = "${alert.label}$distance · ${alert.bearing.name.lowercase()} · $rangeSource",
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = if (objectDescription.isEmpty()) 12.dp else 92.dp, start = 12.dp, end = 12.dp)
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                    color = if (alert.severity == com.google.ai.edge.gallery.ui.echosense.ProximitySeverity.URGENT) {
+                        Color(0xFFFF5252)
+                    } else {
+                        Color.White
+                    },
                 )
             }
 

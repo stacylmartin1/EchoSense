@@ -57,7 +57,7 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
-import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_ID
+import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_IDS
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 private val TASK_BANNER_ITEMS = listOf(
@@ -89,15 +89,21 @@ fun PreviewScreen(
 
     val uiState by modelManagerViewModel.uiState.collectAsState()
     val modelTask = uiState.tasks.firstOrNull { task ->
-        task.models.any { it.name == ECHOSENSE_MODEL_ID }
+        task.models.any { it.name in ECHOSENSE_MODEL_IDS }
     }
-    val onboardingModel = modelTask?.models?.firstOrNull { it.name == ECHOSENSE_MODEL_ID }
+    val onboardingModels = modelTask?.models?.filter { it.name in ECHOSENSE_MODEL_IDS }.orEmpty()
+    val onboardingModel = onboardingModels.firstOrNull { it.name == uiState.selectedModel.name }
+        ?: onboardingModels.firstOrNull()
     val onboardingStatus = onboardingModel?.let { uiState.modelDownloadStatus[it.name] }
 
     // Use the default task's model as the shared model (all tasks use the same downloaded model)
     val defaultCustomTask = modelManagerViewModel.getCustomTaskByTaskId(BuiltInTaskId.NAVIGATION_ASSISTANCE)
-    val sharedModel = remember(defaultCustomTask) { defaultCustomTask?.task?.models?.firstOrNull() }
-    LaunchedEffect(sharedModel) {
+    val sharedModel = defaultCustomTask?.task?.models?.firstOrNull {
+        it.name == uiState.selectedModel.name
+    } ?: defaultCustomTask?.task?.models?.firstOrNull {
+        uiState.modelDownloadStatus[it.name]?.status == ModelDownloadStatusType.SUCCEEDED
+    } ?: defaultCustomTask?.task?.models?.firstOrNull()
+    LaunchedEffect(sharedModel?.name) {
         sharedModel?.let { modelManagerViewModel.selectModel(it) }
     }
 
@@ -161,9 +167,21 @@ fun PreviewScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "EchoSense uses a one-time 3.7 GB download for private, on-device " +
-                            "visual assistance. No account is required."
+                        "Choose a Gemma 4 model for private, on-device visual assistance. " +
+                            "No account is required."
                     )
+                    if (!isDownloading) {
+                        onboardingModels.forEach { model ->
+                            val size = model.totalBytes.toDouble() / 1_000_000_000.0
+                            TextButton(
+                                onClick = { modelManagerViewModel.selectModel(model) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                val selected = model.name == onboardingModel.name
+                                Text("${if (selected) "✓ " else ""}${model.displayName} · %.1f GB".format(size))
+                            }
+                        }
+                    }
                     if (isDownloading) {
                         val progress =
                             if (onboardingStatus.totalBytes > 0L) {
@@ -188,7 +206,11 @@ fun PreviewScreen(
                         }
                     }
                 ) {
-                    Text(if (isDownloading) "Continue in Background" else "Download Model")
+                    val size = onboardingModel.totalBytes.toDouble() / 1_000_000_000.0
+                    Text(
+                        if (isDownloading) "Continue in Background"
+                        else "Download — %.1f GB".format(size)
+                    )
                 }
             },
             dismissButton = {

@@ -113,7 +113,8 @@ data class Model(
   /**
    * The URL to download the model from.
    *
-   * The URL must be a direct HTTPS download supplied by the EchoSense model catalog.
+   * The URL must be a direct HTTPS download. EchoSense pins public model revisions referenced
+   * by the Google AI Edge Gallery allowlist.
    */
   val url: String = "",
 
