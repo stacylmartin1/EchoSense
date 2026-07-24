@@ -76,6 +76,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private let speech = SpeechOutputService()
   private let voiceCommands = VoiceCommandService()
   private let ocrService: OCRService = VisionOCRService()
+  private let barcodeScanner: BarcodeScanning = VisionBarcodeScanner()
   private let localLLM: LocalLLMClient = LiteRTLMClient()
   private lazy var translationService: TranslationService = LocalTranslationService(localLLM: localLLM)
   private let documentTextExtractor = DocumentTextExtractor()
@@ -147,7 +148,6 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       }
     }
     if feature.supportsCollisionAvoidance {
-      collisionAvoidanceEnabled = objectDetector.isAvailable
       prepareObjectDetector()
     }
     if feature.usesLocalLLM {
@@ -178,7 +178,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     candidateAlertSince = nil
     hasAnnouncedStartupStatus = false
     collisionAvoidanceAvailable = objectDetector.isAvailable
-    collisionAvoidanceEnabled = newFeature.supportsCollisionAvoidance && objectDetector.isAvailable
+    collisionAvoidanceEnabled = false
     isLocalModelReady = localLLM.isReady
     isModelReady = modelReady(for: newFeature)
 
@@ -283,6 +283,65 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       analyze: VisualUtilityAnalyzer.lightLevel,
       describe: \.spokenDescription
     )
+  }
+
+  func scanBarcodeOrQRCode() {
+    guard feature == .documentReader, !isAnalyzing else { return }
+    beginUserInitiatedWork()
+    isAnalyzing = true
+    analysisStage = "Focusing camera"
+    activeModelName = "Vision barcode scanner"
+    camera.requestCenterFocus()
+
+    analysisTask = Task {
+      defer {
+        isAnalyzing = false
+        analysisStage = ""
+      }
+      do {
+        try await Task.sleep(for: .milliseconds(450))
+        try Task.checkCancellation()
+        guard let sampleBuffer = latestSampleBuffer,
+              let image = camera.captureCurrentFrameImage(from: sampleBuffer) else {
+          let message = "Camera frame is not ready."
+          errorMessage = message
+          speech.announce(message)
+          announceAccessibility(message)
+          return
+        }
+        analysisStage = "Scanning barcode or QR code"
+        let codes = try await barcodeScanner.scan(image: image)
+        try Task.checkCancellation()
+        guard !codes.isEmpty else {
+          let message = VisualUtilityAnalyzer.codeCaptureGuidance(in: image)
+          transcript = message
+          speech.announce(message)
+          announceAccessibility(message)
+          return
+        }
+        transcript = codes.map(\.displayDescription).joined(separator: "\n\n")
+        let spoken = codes.map(\.spokenDescription).joined(separator: " ")
+        speech.announce(spoken)
+        announceAccessibility(
+          codes.count == 1 ? "Code recognized." : "\(codes.count) codes recognized."
+        )
+      } catch is CancellationError {
+      } catch {
+        let message = "Unable to scan the code."
+        errorMessage = message
+        speech.announce(message)
+        announceAccessibility(message)
+      }
+    }
+  }
+
+  func captureMagnifierFrame() -> UIImage? {
+    guard let sampleBuffer = latestSampleBuffer else { return nil }
+    return camera.captureCurrentFrameImage(from: sampleBuffer)
+  }
+
+  func setMagnifierTorch(enabled: Bool) {
+    camera.setTorch(enabled: enabled)
   }
 
   private func runVisualUtility<Result>(
@@ -1046,7 +1105,6 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       await MainActor.run {
         guard isActive, !Task.isCancelled else { return }
         collisionAvoidanceAvailable = objectDetector.isAvailable
-        collisionAvoidanceEnabled = feature.supportsCollisionAvoidance && objectDetector.isAvailable
         isLocalModelReady = localLLM.isReady
         isModelReady = modelReady(for: feature)
         if objectDetector.isAvailable {

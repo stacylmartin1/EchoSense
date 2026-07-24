@@ -13,6 +13,7 @@ import com.google.ai.edge.gallery.ui.echosense.GeminiHelper
 import com.google.ai.edge.gallery.ui.echosense.OcrHelper
 import com.google.ai.edge.gallery.ui.echosense.TesseractOcrHelper
 import com.google.ai.edge.gallery.ui.echosense.VisualUtilityAnalyzer
+import com.google.ai.edge.gallery.ui.echosense.BarcodeScannerHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -213,6 +214,69 @@ class DocumentReaderViewModel @Inject constructor(
     fun measureLightLevel(imageProxy: ImageProxy) {
         analyzeCameraUtility(imageProxy) { bitmap ->
             VisualUtilityAnalyzer.lightLevel(bitmap)?.spokenDescription
+        }
+    }
+
+    fun captureMagnifierFrame(imageProxy: ImageProxy, onCaptured: (Bitmap?) -> Unit) {
+        try {
+            val source = imageProxyToBitmap(imageProxy)
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            imageProxy.close()
+            onCaptured(source?.let { rotateBitmapIfNeeded(it, rotation) })
+        } catch (error: Exception) {
+            imageProxy.close()
+            Log.e(TAG, "Magnifier capture failed", error)
+            onCaptured(null)
+        }
+    }
+
+    fun scanBarcodeOrQrCode(imageProxy: ImageProxy) {
+        try {
+            val source = imageProxyToBitmap(imageProxy)
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            imageProxy.close()
+            val bitmap = source?.let { rotateBitmapIfNeeded(it, rotation) }
+            if (bitmap == null) {
+                announceAction("Camera frame is not ready.")
+                return
+            }
+
+            _isAnalyzing.value = true
+            _activeModelName.value = "ML Kit barcode scanner"
+            val failureGuidance = VisualUtilityAnalyzer.codeCaptureGuidance(bitmap)
+            BarcodeScannerHelper.scan(
+                bitmap = bitmap,
+                onSuccess = { codes ->
+                    _isAnalyzing.value = false
+                    bitmap.recycle()
+                    if (codes.isEmpty()) {
+                        val message = failureGuidance
+                        _documentText.value = message
+                        _objectDescription.value = message
+                        speakText(message)
+                        return@scan
+                    }
+                    _documentMode.value = DocumentMode.IMAGE
+                    _totalPages.value = 1
+                    _currentPage.value = 0
+                    _documentText.value = codes.joinToString("\n\n") { it.displayDescription }
+                    _objectDescription.value = _documentText.value
+                    speakText(codes.joinToString(" ") { it.spokenDescription })
+                },
+                onFailure = { error ->
+                    _isAnalyzing.value = false
+                    bitmap.recycle()
+                    Log.e(TAG, "Barcode scan failed", error)
+                    _error.value = "Unable to scan the code"
+                    announceAction("Unable to scan the code.")
+                },
+            )
+        } catch (error: Exception) {
+            imageProxy.close()
+            _isAnalyzing.value = false
+            Log.e(TAG, "Barcode capture failed", error)
+            _error.value = "Unable to scan the code"
+            announceAction("Unable to scan the code.")
         }
     }
 

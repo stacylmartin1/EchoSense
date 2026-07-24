@@ -111,6 +111,7 @@ dependencies {
   implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
   implementation("com.google.mlkit:text-recognition-korean:16.0.1")
   implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+  implementation("com.google.mlkit:barcode-scanning:17.3.0")
   implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
   kapt(libs.hilt.android.compiler)
   testImplementation(libs.junit)

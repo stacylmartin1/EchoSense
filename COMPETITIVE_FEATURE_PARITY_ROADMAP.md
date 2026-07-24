@@ -117,10 +117,9 @@ offline guarantees for multimodal analysis.
 - Guided page alignment and automatic capture
 - Crop, deskew, enhancement, and multi-page scanning
 - Structured document navigation, library, search, and export
-- Barcode and QR scanning
 - Product lookup
-- Magnification and low-vision display filters
-- Color and light utilities
+- Continuous barcode alignment and product lookup
+- Continuous light feedback
 - Purpose-built object finder and frozen-image spatial exploration
 - Share extensions/intents
 - Dedicated currency model packs
@@ -158,9 +157,20 @@ program rather than a single release.
 - **Implemented; device validation pending — iOS and Android:** Light-level measurement
   from the live camera.
 - **Planned:** Continuous optional light tone and haptic feedback.
-- **Planned:** Magnifier with zoom, freeze, focus lock, flashlight, inversion, contrast,
-  and grayscale.
-- **Planned:** Offline barcode and QR recognition with alignment feedback.
+- **Implemented; device validation pending — iOS and Android:** Accessible Magnifier with
+  zoom, freeze/live view, flashlight, inversion, contrast, grayscale, and horizontally
+  scrolling controls for smaller screens.
+- **Planned:** Magnifier tap-to-focus and optional focus/exposure lock.
+- **Implemented; device validation pending — iOS and Android:** Offline snapshot barcode
+  and QR recognition. Web addresses are identified but never opened automatically; Wi-Fi
+  passwords are not spoken.
+- **Implemented; tuning pending — iOS and Android:** Failed code scans inspect image
+  sharpness and localized overexposure to provide blur- or glare-specific guidance rather
+  than assuming the user should move closer.
+- **Implemented; device validation pending — iOS:** Center autofocus plus dedicated QR and
+  contrast-enhanced recognition passes improve mixed barcode/QR documents and difficult
+  print conditions.
+- **Planned:** Continuous barcode alignment feedback using tones and haptics.
 - **Planned:** Optional online product lookup with source and freshness disclosure.
 - **Planned:** Share-to-EchoSense from Photos, Files, browsers, email, and messaging apps.
 

@@ -30,8 +30,10 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,16 +64,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
-import com.google.ai.edge.gallery.data.ModelDownloadStatusType
-import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
-import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentReaderScreen(
     viewModel: DocumentReaderViewModel,
-    modelManagerViewModel: ModelManagerViewModel
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -93,6 +91,7 @@ fun DocumentReaderScreen(
                         CameraReadAction.READ_TEXT -> viewModel.analyzeImageWithOcr(imageProxy)
                         CameraReadAction.COLOR -> viewModel.identifyCenterColor(imageProxy)
                         CameraReadAction.LIGHT -> viewModel.measureLightLevel(imageProxy)
+                        CameraReadAction.CODE -> viewModel.scanBarcodeOrQrCode(imageProxy)
                     }
                 }
                 override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
@@ -103,10 +102,8 @@ fun DocumentReaderScreen(
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-    var permissionPromptResponded by remember { mutableStateOf(false) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         hasCameraPermission = it
-        permissionPromptResponded = true
     }
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -130,6 +127,15 @@ fun DocumentReaderScreen(
     val documentMode by viewModel.documentMode.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
     var showCamera by remember { mutableStateOf(true) }
+    var showMagnifier by remember { mutableStateOf(false) }
+
+    if (showMagnifier) {
+        MagnifierScreen(
+            viewModel = viewModel,
+            onClose = { showMagnifier = false },
+        )
+        return
+    }
 
     LaunchedEffect(showCamera, captureAfterCameraStarts) {
         if (showCamera && captureAfterCameraStarts) {
@@ -139,45 +145,9 @@ fun DocumentReaderScreen(
         }
     }
 
-    val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
-    val selectedModel = modelManagerUiState.selectedModel
-    val modelDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]?.status
-    val modelInitStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-    val isModelInstalled = modelDownloadStatus == ModelDownloadStatusType.SUCCEEDED
-    val isModelDownloadInProgress =
-        modelDownloadStatus == ModelDownloadStatusType.IN_PROGRESS ||
-            modelDownloadStatus == ModelDownloadStatusType.UNZIPPING
-    val isModelReady =
-        selectedModel.instance != null &&
-            modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
-
     LaunchedEffect(key1 = true) {
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
-    }
-
-    LaunchedEffect(modelDownloadStatus, isModelReady, isAnalyzing) {
-        if (modelDownloadStatus != null) {
-            viewModel.checkAndAnnounceStatusChanges(
-                isModelInstalled,
-                isModelDownloadInProgress,
-                isModelReady,
-                isAnalyzing,
-            )
-        }
-    }
-    LaunchedEffect(permissionPromptResponded, hasCameraPermission) {
-        if (permissionPromptResponded && hasCameraPermission) {
-            delay(750)
-            if (modelDownloadStatus != null) {
-                viewModel.retryStartupStatusAnnouncementAfterPermission(
-                    isModelInstalled,
-                    isModelDownloadInProgress,
-                    isModelReady,
-                    isAnalyzing,
-                )
-            }
-        }
     }
 
     DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
@@ -337,6 +307,28 @@ fun DocumentReaderScreen(
                     enabled = !isAnalyzing && hasCameraPermission,
                 )
                 EchoSenseActionButton(
+                    icon = Icons.Default.QrCodeScanner,
+                    label = "Codes",
+                    contentDescription = "Scan a barcode or QR code",
+                    onClick = {
+                        pendingCameraAction = CameraReadAction.CODE
+                        if (showCamera) {
+                            captureAndAnalyze()
+                        } else {
+                            captureAfterCameraStarts = true
+                            showCamera = true
+                        }
+                    },
+                    enabled = !isAnalyzing && hasCameraPermission,
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.ZoomIn,
+                    label = "Magnify",
+                    contentDescription = "Open camera magnifier",
+                    onClick = { showMagnifier = true },
+                    enabled = hasCameraPermission,
+                )
+                EchoSenseActionButton(
                     icon = Icons.Default.UploadFile,
                     label = "Upload",
                     contentDescription = "Upload file to read",
@@ -365,4 +357,5 @@ private enum class CameraReadAction {
     READ_TEXT,
     COLOR,
     LIGHT,
+    CODE,
 }

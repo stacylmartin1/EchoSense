@@ -16,6 +16,13 @@ struct FeatureSessionView: View {
   @State private var confirmingAssistantOnline = false
   @State private var pendingAssistantOnlineSelection = false
   @State private var assistantFollowsLatest = true
+  @State private var showingMagnifier = false
+  @State private var magnifierZoom = 2.0
+  @State private var magnifierFrozenImage: UIImage?
+  @State private var magnifierHighContrast = false
+  @State private var magnifierInverted = false
+  @State private var magnifierGrayscale = false
+  @State private var magnifierTorchEnabled = false
 
   var body: some View {
     ZStack {
@@ -23,42 +30,81 @@ struct FeatureSessionView: View {
         assistantView
       } else {
         previewLayer
+          .scaleEffect(showingMagnifier ? magnifierZoom : 1)
+          .contrast(showingMagnifier && magnifierHighContrast ? 1.8 : 1)
+          .grayscale(showingMagnifier && magnifierGrayscale ? 1 : 0)
+          .modifier(OptionalColorInvert(enabled: showingMagnifier && magnifierInverted))
           .ignoresSafeArea()
           .accessibilityHidden(true)
 
-        if viewModel.feature.supportsCollisionAvoidance && viewModel.collisionAvoidanceAvailable {
-          detectionOverlay
-            .ignoresSafeArea()
+        if showingMagnifier, let magnifierFrozenImage {
+          GeometryReader { geometry in
+            Image(uiImage: magnifierFrozenImage)
+              .resizable()
+              .scaledToFill()
+              .frame(width: geometry.size.width, height: geometry.size.height)
+              .scaleEffect(magnifierZoom)
+              .contrast(magnifierHighContrast ? 1.8 : 1)
+              .grayscale(magnifierGrayscale ? 1 : 0)
+              .modifier(OptionalColorInvert(enabled: magnifierInverted))
+              .clipped()
+          }
+          .ignoresSafeArea()
+          .clipped()
+          .accessibilityHidden(true)
         }
 
-        VStack(spacing: 0) {
-          if settings.textOverlayEnabled {
-            HStack(alignment: .top) {
-              statusOverlay
-              Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+        if showingMagnifier {
+          MagnifierView(
+            viewModel: viewModel,
+            zoom: $magnifierZoom,
+            frozenImage: $magnifierFrozenImage,
+            highContrast: $magnifierHighContrast,
+            inverted: $magnifierInverted,
+            grayscale: $magnifierGrayscale,
+            torchEnabled: $magnifierTorchEnabled,
+            onClose: closeMagnifier
+          )
+        } else {
+          if viewModel.feature.supportsCollisionAvoidance && viewModel.collisionAvoidanceAvailable {
+            detectionOverlay
+              .ignoresSafeArea()
           }
 
-          Spacer()
+          VStack(spacing: 0) {
+            if settings.textOverlayEnabled {
+              HStack(alignment: .top) {
+                statusOverlay
+                Spacer()
+              }
+              .padding(.horizontal, 12)
+              .padding(.top, 8)
+            }
 
-          if settings.textOverlayEnabled {
-            resultOverlay
+            Spacer()
+
+            if settings.textOverlayEnabled {
+              resultOverlay
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+
+            featureControlsOverlay
               .padding(.horizontal, 12)
               .padding(.bottom, 8)
+
+            bottomModeBar
           }
-
-          featureControlsOverlay
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-
-          bottomModeBar
         }
       }
     }
     .onAppear { viewModel.onAppear(settings: settings) }
-    .onDisappear { viewModel.onDisappear() }
+    .onDisappear {
+      if magnifierTorchEnabled {
+        viewModel.setMagnifierTorch(enabled: false)
+      }
+      viewModel.onDisappear()
+    }
     .onChange(of: settings.selectedDetector) { oldValue, newValue in
       viewModel.reloadDetector(model: newValue)
     }
@@ -533,6 +579,8 @@ struct FeatureSessionView: View {
         if viewModel.feature == .documentReader {
           colorButton
           lightButton
+          codeButton
+          magnifierButton
         }
         stopButton
 
@@ -642,6 +690,43 @@ struct FeatureSessionView: View {
     .disabled(viewModel.isAnalyzing)
     .accessibilityLabel("Measure light level")
     .accessibilityHint("Speaks the approximate brightness seen by the camera. This is not a calibrated lux measurement.")
+  }
+
+  private var codeButton: some View {
+    Button {
+      viewModel.scanBarcodeOrQRCode()
+    } label: {
+      iconLabel(systemName: "barcode.viewfinder", title: "Codes")
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing)
+    .accessibilityLabel("Scan barcode or QR code")
+    .accessibilityHint("Scans the current camera view. Links are reported but never opened automatically.")
+  }
+
+  private var magnifierButton: some View {
+    Button {
+      magnifierFrozenImage = nil
+      magnifierZoom = 2
+      magnifierHighContrast = false
+      magnifierInverted = false
+      magnifierGrayscale = false
+      magnifierTorchEnabled = false
+      showingMagnifier = true
+    } label: {
+      iconLabel(systemName: "plus.magnifyingglass", title: "Magnify")
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing)
+    .accessibilityLabel("Open Magnifier")
+    .accessibilityHint("Opens a full-screen magnifier with zoom, freeze, contrast, inversion, grayscale, and flashlight controls.")
+  }
+
+  private func closeMagnifier() {
+    magnifierTorchEnabled = false
+    viewModel.setMagnifierTorch(enabled: false)
+    magnifierFrozenImage = nil
+    showingMagnifier = false
   }
 
   private var collisionToggleButton: some View {

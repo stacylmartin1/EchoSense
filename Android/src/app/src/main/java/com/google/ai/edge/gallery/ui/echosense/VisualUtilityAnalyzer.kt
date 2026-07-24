@@ -30,6 +30,8 @@ data class CameraLightResult(
  * instead of one pixel makes the result less sensitive to sensor noise and autofocus movement.
  */
 object VisualUtilityAnalyzer {
+    private const val CODE_GUIDANCE =
+        "No barcode or QR code found. Keep the entire code visible, try a different distance, and avoid glare."
     fun centerColor(bitmap: Bitmap): CameraColorResult? {
         if (bitmap.width <= 0 || bitmap.height <= 0) return null
         val sampleWidth = max(1, (bitmap.width * 0.06f).roundToInt())
@@ -72,6 +74,54 @@ object VisualUtilityAnalyzer {
             level = level,
             brightnessPercent = (brightness * 100).roundToInt(),
         )
+    }
+
+    fun codeCaptureGuidance(bitmap: Bitmap): String {
+        if (bitmap.width <= 0 || bitmap.height <= 0) return CODE_GUIDANCE
+        val side = 48
+        val samples = sampleGrid(bitmap, side)
+        val luminances = samples.map(::relativeLuminance)
+        if (luminances.size != side * side) return CODE_GUIDANCE
+        val median = luminances.sorted()[luminances.size / 2]
+
+        var maximumBlockMean = 0.0
+        val blockSide = 8
+        for (blockY in 0 until 6) {
+            for (blockX in 0 until 6) {
+                var total = 0.0
+                for (y in 0 until blockSide) {
+                    for (x in 0 until blockSide) {
+                        total += luminances[
+                            (blockY * blockSide + y) * side + blockX * blockSide + x
+                        ]
+                    }
+                }
+                maximumBlockMean = max(maximumBlockMean, total / (blockSide * blockSide))
+            }
+        }
+        if (maximumBlockMean > 0.94 && maximumBlockMean - median > 0.14) {
+            return "Possible glare or overexposure detected. Tilt the code away from the light, shade it, and try again."
+        }
+
+        var edgeTotal = 0.0
+        var edgeCount = 0
+        for (y in 0 until side) {
+            for (x in 0 until side) {
+                val value = luminances[y * side + x]
+                if (x + 1 < side) {
+                    edgeTotal += kotlin.math.abs(value - luminances[y * side + x + 1])
+                    edgeCount++
+                }
+                if (y + 1 < side) {
+                    edgeTotal += kotlin.math.abs(value - luminances[(y + 1) * side + x])
+                    edgeCount++
+                }
+            }
+        }
+        if (edgeTotal / max(1, edgeCount) < 0.028) {
+            return "The image appears out of focus. Move the phone farther away first, hold it steady, and try again."
+        }
+        return CODE_GUIDANCE
     }
 
     private fun averageRgb(
@@ -127,6 +177,23 @@ object VisualUtilityAnalyzer {
                 x += stepX
             }
             y += stepY
+        }
+        return samples
+    }
+
+    private fun sampleGrid(bitmap: Bitmap, side: Int): List<Rgb> {
+        val samples = ArrayList<Rgb>(side * side)
+        for (row in 0 until side) {
+            val y = min(bitmap.height - 1, ((row + 0.5) * bitmap.height / side).toInt())
+            for (column in 0 until side) {
+                val x = min(bitmap.width - 1, ((column + 0.5) * bitmap.width / side).toInt())
+                val pixel = bitmap.getPixel(x, y)
+                samples += Rgb(
+                    Color.red(pixel) / 255.0,
+                    Color.green(pixel) / 255.0,
+                    Color.blue(pixel) / 255.0,
+                )
+            }
         }
         return samples
     }

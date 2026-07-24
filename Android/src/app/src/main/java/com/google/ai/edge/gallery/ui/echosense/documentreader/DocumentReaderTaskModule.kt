@@ -67,7 +67,7 @@ class DocumentReaderTask @Inject constructor() : CustomTask {
         }
         LaunchedEffect(selectedModel.name) { viewModel.setModel(selectedModel) }
 
-        DocumentReaderScreen(viewModel = viewModel, modelManagerViewModel = modelManagerViewModel)
+        DocumentReaderScreen(viewModel = viewModel)
     }
 }
 

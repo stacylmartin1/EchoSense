@@ -74,6 +74,58 @@ enum VisualUtilityAnalyzer {
     )
   }
 
+  static func codeCaptureGuidance(in image: UIImage) -> String {
+    guard let input = CIImage(image: image) else {
+      return genericCodeGuidance
+    }
+    let samples = sampledRGBAs(of: input, in: input.extent, side: 48)
+    guard samples.count == 48 * 48 else { return genericCodeGuidance }
+    let luminances = samples.map(relativeLuminance)
+    let sorted = luminances.sorted()
+    let median = sorted[sorted.count / 2]
+
+    var maximumBlockMean = 0.0
+    let blockSide = 8
+    for blockY in 0..<6 {
+      for blockX in 0..<6 {
+        var total = 0.0
+        for y in 0..<blockSide {
+          for x in 0..<blockSide {
+            total += luminances[(blockY * blockSide + y) * 48 + blockX * blockSide + x]
+          }
+        }
+        maximumBlockMean = max(maximumBlockMean, total / Double(blockSide * blockSide))
+      }
+    }
+
+    if maximumBlockMean > 0.94, maximumBlockMean - median > 0.14 {
+      return "Possible glare or overexposure detected. Tilt the code away from the light, shade it, and try again."
+    }
+
+    var edgeTotal = 0.0
+    var edgeCount = 0
+    for y in 0..<48 {
+      for x in 0..<48 {
+        let value = luminances[y * 48 + x]
+        if x + 1 < 48 {
+          edgeTotal += abs(value - luminances[y * 48 + x + 1])
+          edgeCount += 1
+        }
+        if y + 1 < 48 {
+          edgeTotal += abs(value - luminances[(y + 1) * 48 + x])
+          edgeCount += 1
+        }
+      }
+    }
+    if edgeTotal / Double(max(1, edgeCount)) < 0.028 {
+      return "The image appears out of focus. Move the phone farther away first, hold it steady, and try again."
+    }
+    return genericCodeGuidance
+  }
+
+  private static let genericCodeGuidance =
+    "No barcode or QR code found. Keep the entire code visible, try a different distance, and avoid glare."
+
   private static func averageRGBA(of image: CIImage, in extent: CGRect) -> RGBA? {
     guard !extent.isEmpty else { return nil }
     let filter = CIFilter.areaAverage()
@@ -97,9 +149,12 @@ enum VisualUtilityAnalyzer {
     )
   }
 
-  private static func sampledRGBAs(of image: CIImage, in extent: CGRect) -> [RGBA] {
+  private static func sampledRGBAs(
+    of image: CIImage,
+    in extent: CGRect,
+    side: Int = 21
+  ) -> [RGBA] {
     guard !extent.isEmpty else { return [] }
-    let side = 21
     let translated = image
       .cropped(to: extent)
       .transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))

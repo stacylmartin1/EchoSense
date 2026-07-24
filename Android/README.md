@@ -11,7 +11,9 @@ The Android application began as a customization of the open-source Google AI Ed
 - **Safety** combines object detection with ARCore metric depth and vertical-plane checks when supported, then falls back to camera-relative proximity estimates.
 - **Currency** identifies visible bank notes.
 - **Read** extracts document text from the camera or an imported file, reads it aloud,
-  identifies the approximate center color, and reports the camera-relative light level.
+  identifies the approximate center color, reports the camera-relative light level, and
+  scans common barcodes and QR codes entirely on-device. Its accessible Magnifier provides
+  zoom, freeze, flashlight, contrast, inversion, and grayscale controls.
 - **Translate** extracts document text and translates it to English.
 - **On-device analysis** uses a downloaded Gemma multimodal model without sending camera images to an AI provider.
 - **Optional online analysis** supports user-provided Gemini or OpenAI API keys and configurable ask, fallback, or prefer-online behavior.

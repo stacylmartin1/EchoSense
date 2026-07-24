@@ -179,6 +179,51 @@ final class CameraFrameSource: NSObject, ObservableObject {
     return UIImage(cgImage: cgImage, scale: 1, orientation: orientation)
   }
 
+  func requestCenterFocus() {
+    sessionQueue.async {
+      guard let camera = (self.session.inputs.first as? AVCaptureDeviceInput)?.device else {
+        return
+      }
+      do {
+        try camera.lockForConfiguration()
+        let center = CGPoint(x: 0.5, y: 0.5)
+        if camera.isFocusPointOfInterestSupported {
+          camera.focusPointOfInterest = center
+          if camera.isFocusModeSupported(.autoFocus) {
+            camera.focusMode = .autoFocus
+          }
+        }
+        if camera.isExposurePointOfInterestSupported {
+          camera.exposurePointOfInterest = center
+          if camera.isExposureModeSupported(.continuousAutoExposure) {
+            camera.exposureMode = .continuousAutoExposure
+          }
+        }
+        camera.unlockForConfiguration()
+      } catch {
+        // Continuous camera operation is still preferable to failing the scan.
+      }
+    }
+  }
+
+  func setTorch(enabled: Bool) {
+    sessionQueue.async {
+      guard let camera = (self.session.inputs.first as? AVCaptureDeviceInput)?.device,
+            camera.hasTorch else { return }
+      do {
+        try camera.lockForConfiguration()
+        if enabled, camera.isTorchModeSupported(.on) {
+          try camera.setTorchModeOn(level: min(0.7, AVCaptureDevice.maxAvailableTorchLevel))
+        } else if camera.isTorchModeSupported(.off) {
+          camera.torchMode = .off
+        }
+        camera.unlockForConfiguration()
+      } catch {
+        // The magnifier remains usable without the torch.
+      }
+    }
+  }
+
   private func setShouldDeliverFrames(_ value: Bool) {
     deliveryLock.lock()
     shouldDeliverFrames = value
