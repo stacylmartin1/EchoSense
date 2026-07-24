@@ -550,7 +550,7 @@ private val THIRD_PARTY_LICENSE_NOTICES =
       notice = "Tesseract is used as an offline OCR fallback. Bundled tessdata files include Thai, Khmer, Lao, Burmese, and Arabic recognition data.",
     ),
     LicenseNotice(
-      name = "AndroidX, Jetpack Compose, CameraX, Hilt, Protobuf, PDFBox Android, CommonMark, RichText, AppAuth, Firebase, and related libraries",
+      name = "AndroidX, Jetpack Compose, CameraX, Hilt, Protobuf, PDFBox Android, CommonMark, RichText, Firebase, and related libraries",
       license = "Apache License 2.0, BSD, MIT, or similar permissive licenses",
       notice = "The app uses standard Android and JVM open-source libraries. Dependency-level license generation is summarized here because the Google OSS Licenses debug artifact currently generates an empty placeholder list.",
     ),

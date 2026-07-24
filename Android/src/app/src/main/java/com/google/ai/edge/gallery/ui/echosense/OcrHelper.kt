@@ -241,11 +241,8 @@ object OcrHelper {
         for (block in blocks) {
             for (line in block.lines) {
                 for (element in line.elements) {
-                    val conf = element.confidence
-                    if (conf != null) {
-                        totalConf += conf
-                        count++
-                    }
+                    totalConf += element.confidence
+                    count++
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.google.ai.edge.gallery.ui.echosense
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,5 +19,14 @@ class EchoSenseModelsTest {
       assertEquals(64, model.sha256.length)
       assertTrue(model.sizeInBytes > 2_000_000_000L)
     }
+  }
+
+  @Test
+  fun `all tasks receive the same canonical model runtime objects`() {
+    val firstTaskModels = createEchoSenseGemmaModels()
+    val secondTaskModels = createEchoSenseGemmaModels()
+
+    assertSame(firstTaskModels[0], secondTaskModels[0])
+    assertSame(firstTaskModels[1], secondTaskModels[1])
   }
 }

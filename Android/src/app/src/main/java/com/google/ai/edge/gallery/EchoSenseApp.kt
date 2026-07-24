@@ -17,16 +17,11 @@
 package com.google.ai.edge.gallery
 
 import androidx.compose.runtime.Composable
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.rememberNavController
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
-import com.google.ai.edge.gallery.ui.navigation.GalleryNavHost
+import com.google.ai.edge.gallery.ui.echosense.EchoSenseScreen
 
-/** Top level composable representing the main screen of the application. */
+/** Root EchoSense UI. The app opens directly into the default Navigate function. */
 @Composable
-fun GalleryApp(
-  navController: NavHostController = rememberNavController(),
-  modelManagerViewModel: ModelManagerViewModel,
-) {
-  GalleryNavHost(navController = navController, modelManagerViewModel = modelManagerViewModel)
-}
+fun EchoSenseApp(modelManagerViewModel: ModelManagerViewModel) =
+  EchoSenseScreen(modelManagerViewModel = modelManagerViewModel, tosViewModel = hiltViewModel())

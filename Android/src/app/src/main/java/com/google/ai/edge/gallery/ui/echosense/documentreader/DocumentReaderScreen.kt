@@ -22,11 +22,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
@@ -59,6 +62,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.delay
@@ -78,11 +82,19 @@ fun DocumentReaderScreen(
             .build()
     }
 
+    var pendingCameraAction by remember { mutableStateOf(CameraReadAction.READ_TEXT) }
+    var captureAfterCameraStarts by remember { mutableStateOf(false) }
     val captureAndAnalyze = {
         imageCapture.takePicture(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(imageProxy: ImageProxy) { viewModel.analyzeImageWithOcr(imageProxy) }
+                override fun onCaptureSuccess(imageProxy: ImageProxy) {
+                    when (pendingCameraAction) {
+                        CameraReadAction.READ_TEXT -> viewModel.analyzeImageWithOcr(imageProxy)
+                        CameraReadAction.COLOR -> viewModel.identifyCenterColor(imageProxy)
+                        CameraReadAction.LIGHT -> viewModel.measureLightLevel(imageProxy)
+                    }
+                }
                 override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
             }
         )
@@ -117,24 +129,54 @@ fun DocumentReaderScreen(
     val totalPages by viewModel.totalPages.collectAsState()
     val documentMode by viewModel.documentMode.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
-    var showCamera by remember { mutableStateOf(false) }
+    var showCamera by remember { mutableStateOf(true) }
+
+    LaunchedEffect(showCamera, captureAfterCameraStarts) {
+        if (showCamera && captureAfterCameraStarts) {
+            delay(350)
+            captureAfterCameraStarts = false
+            captureAndAnalyze()
+        }
+    }
 
     val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
+    val modelDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]?.status
     val modelInitStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-    val isModelReady = modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
+    val isModelInstalled = modelDownloadStatus == ModelDownloadStatusType.SUCCEEDED
+    val isModelDownloadInProgress =
+        modelDownloadStatus == ModelDownloadStatusType.IN_PROGRESS ||
+            modelDownloadStatus == ModelDownloadStatusType.UNZIPPING
+    val isModelReady =
+        selectedModel.instance != null &&
+            modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
 
     LaunchedEffect(key1 = true) {
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
     }
 
-    LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
-    LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(modelDownloadStatus, isModelReady, isAnalyzing) {
+        if (modelDownloadStatus != null) {
+            viewModel.checkAndAnnounceStatusChanges(
+                isModelInstalled,
+                isModelDownloadInProgress,
+                isModelReady,
+                isAnalyzing,
+            )
+        }
+    }
     LaunchedEffect(permissionPromptResponded, hasCameraPermission) {
         if (permissionPromptResponded && hasCameraPermission) {
             delay(750)
-            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+            if (modelDownloadStatus != null) {
+                viewModel.retryStartupStatusAnnouncementAfterPermission(
+                    isModelInstalled,
+                    isModelDownloadInProgress,
+                    isModelReady,
+                    isAnalyzing,
+                )
+            }
         }
     }
 
@@ -238,8 +280,11 @@ fun DocumentReaderScreen(
             }
 
             Row(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 EchoSenseActionButton(
@@ -251,6 +296,7 @@ fun DocumentReaderScreen(
                             showCamera = true
                             viewModel.announceAction("Camera ready. Tap Read to capture.")
                         } else {
+                            pendingCameraAction = CameraReadAction.READ_TEXT
                             viewModel.startProcessing()
                             viewModel.announceAction("Reading document")
                             captureAndAnalyze()
@@ -259,6 +305,36 @@ fun DocumentReaderScreen(
                     enabled = !isAnalyzing && hasCameraPermission,
                     highlighted = true,
                     highlightColor = Color(0xFF4CAF50),
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.Palette,
+                    label = "Color",
+                    contentDescription = "Identify the color at the center of the camera view",
+                    onClick = {
+                        pendingCameraAction = CameraReadAction.COLOR
+                        if (showCamera) {
+                            captureAndAnalyze()
+                        } else {
+                            captureAfterCameraStarts = true
+                            showCamera = true
+                        }
+                    },
+                    enabled = !isAnalyzing && hasCameraPermission,
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.LightMode,
+                    label = "Light",
+                    contentDescription = "Measure the approximate light level seen by the camera",
+                    onClick = {
+                        pendingCameraAction = CameraReadAction.LIGHT
+                        if (showCamera) {
+                            captureAndAnalyze()
+                        } else {
+                            captureAfterCameraStarts = true
+                            showCamera = true
+                        }
+                    },
+                    enabled = !isAnalyzing && hasCameraPermission,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.UploadFile,
@@ -284,3 +360,9 @@ fun DocumentReaderScreen(
 }
 
 private const val TAG = "DocumentReaderScreen"
+
+private enum class CameraReadAction {
+    READ_TEXT,
+    COLOR,
+    LIGHT,
+}

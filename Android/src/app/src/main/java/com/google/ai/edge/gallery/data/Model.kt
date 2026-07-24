@@ -164,14 +164,12 @@ data class Model(
    * manually manage model files instead of downloading them. This dir is relative to the app's
    * "External Files Directory", which is: /storage/emulated/0/Android/data/<app_id>/files/.
    *
-   * The <app_id> depends on how the app was built:
-   * - `com.google.aiedge.gallery` for builds from the GitHub source.
-   * - `com.google.ai.edge.gallery` for other builds (Play store, internal, etc).
+   * EchoSense uses `com.terranet.echosense.android` as its <app_id>.
    *
    * For example, if this field is set to "my_model/local_dir/", then the location you should push
-   * files to is (assuming non-github builds):
+   * files to is:
    *
-   * /storage/emulated/0/Android/data/com.google.ai.edge.gallery/files/my_model/local_dir/
+   * /storage/emulated/0/Android/data/com.terranet.echosense.android/files/my_model/local_dir/
    *
    * You can get the full path to a specific file within your code using `Model.getPath(Context,
    * fileNameToGet)`.

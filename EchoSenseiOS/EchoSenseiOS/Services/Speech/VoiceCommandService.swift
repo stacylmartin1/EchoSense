@@ -43,6 +43,9 @@ final class VoiceCommandService {
   private var latestTranscript = ""
 
   private(set) var isListening = false
+  var supportsOfflineRecognition: Bool {
+    recognizer?.supportsOnDeviceRecognition == true
+  }
 
   func start(
     onPartialResult: @escaping (String) -> Void,

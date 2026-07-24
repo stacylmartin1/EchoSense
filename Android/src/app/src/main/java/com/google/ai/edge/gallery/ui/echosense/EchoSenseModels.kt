@@ -11,8 +11,14 @@ private const val ECHOSENSE_E4B_MODEL_SHA256 =
 private const val ECHOSENSE_E2B_MODEL_SHA256 =
   "ab7838cdfc8f77e54d8ca45eadceb20452d9f01e4bfade03e5dce27911b27e42"
 
-/** Pinned public models referenced by the Google AI Edge Gallery allowlist. */
-fun createEchoSenseGemmaModels() = listOf(
+/**
+ * Canonical model objects shared by every EchoSense task.
+ *
+ * Model runtime state lives on [com.google.ai.edge.gallery.data.Model.instance]. Returning the
+ * same objects prevents one task from marking a model name initialized while another task's
+ * same-named object still has no native instance.
+ */
+private val sharedEchoSenseGemmaModels by lazy { listOf(
   AllowedModel(
     id = ECHOSENSE_E4B_MODEL_ID,
     displayName = "Gemma 4 E4B",
@@ -30,6 +36,7 @@ fun createEchoSenseGemmaModels() = listOf(
     recommended = true,
     taskTypes = listOf(
       BuiltInTaskId.NAVIGATION_ASSISTANCE,
+      BuiltInTaskId.ASSISTANT,
       BuiltInTaskId.CURRENCY_MODE,
       BuiltInTaskId.DOCUMENT_READER,
       BuiltInTaskId.DOCUMENT_TRANSLATOR,
@@ -51,9 +58,13 @@ fun createEchoSenseGemmaModels() = listOf(
     recommended = false,
     taskTypes = listOf(
       BuiltInTaskId.NAVIGATION_ASSISTANCE,
+      BuiltInTaskId.ASSISTANT,
       BuiltInTaskId.CURRENCY_MODE,
       BuiltInTaskId.DOCUMENT_READER,
       BuiltInTaskId.DOCUMENT_TRANSLATOR,
     ),
   ).toModel(),
-)
+) }
+
+/** Returns a new list container backed by the canonical shared model objects. */
+fun createEchoSenseGemmaModels() = sharedEchoSenseGemmaModels.toList()

@@ -494,11 +494,11 @@ class NativeTtsQueuePlayer(
     }
 
     private fun sanitize(text: String): String? {
-        val trimmed = text.trim()
-        if (trimmed.isBlank()) {
+        val clean = SpeechTextSanitizer.sanitize(text)
+        if (clean.isBlank()) {
             Log.w(TAG, "Empty text provided to TTS")
             return null
         }
-        return trimmed.replace(Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"), "")
+        return clean
     }
 }

@@ -118,20 +118,9 @@ data class Task(
 )
 
 object BuiltInTaskId {
+  const val ASSISTANT = "assistant"
   const val NAVIGATION_ASSISTANCE = "navigation_assistance"
   const val CURRENCY_MODE = "currency_mode"
   const val DOCUMENT_READER = "document_reader"
   const val DOCUMENT_TRANSLATOR = "document_translator"
-}
-
-private val allLegacyTaskIds: Set<String> =
-  setOf(
-    BuiltInTaskId.NAVIGATION_ASSISTANCE,
-    BuiltInTaskId.CURRENCY_MODE,
-    BuiltInTaskId.DOCUMENT_READER,
-    BuiltInTaskId.DOCUMENT_TRANSLATOR,
-  )
-
-fun isLegacyTasks(id: String): Boolean {
-  return allLegacyTaskIds.contains(id)
 }

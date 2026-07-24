@@ -42,9 +42,12 @@ struct CloudVisionClient {
   }
 
   func analyze(image: UIImage, prompt: String) async throws -> String {
-    guard let imageData = image.jpegData(compressionQuality: 0.82) else {
-      throw CloudVisionError.invalidImage
-    }
+    try await generate(prompt: prompt, image: image)
+  }
+
+  func generate(prompt: String, image: UIImage? = nil) async throws -> String {
+    let imageData = image?.jpegData(compressionQuality: 0.82)
+    if image != nil && imageData == nil { throw CloudVisionError.invalidImage }
     switch provider {
     case .none:
       throw CloudVisionError.invalidKey
@@ -55,15 +58,10 @@ struct CloudVisionClient {
     }
   }
 
-  private func analyzeWithGemini(imageData: Data, prompt: String) async throws -> String {
+  private func analyzeWithGemini(imageData: Data?, prompt: String) async throws -> String {
     let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent")!
     let body: [String: Any] = [
-      "contents": [[
-        "parts": [
-          ["text": prompt],
-          ["inline_data": ["mime_type": "image/jpeg", "data": imageData.base64EncodedString()]],
-        ],
-      ]],
+      "contents": [["parts": geminiParts(prompt: prompt, imageData: imageData)]],
       "generationConfig": ["temperature": 0.1, "maxOutputTokens": 4096],
     ]
     var request = URLRequest(url: url)
@@ -86,17 +84,20 @@ struct CloudVisionClient {
     return text
   }
 
-  private func analyzeWithOpenAI(imageData: Data, prompt: String) async throws -> String {
+  private func analyzeWithOpenAI(imageData: Data?, prompt: String) async throws -> String {
     let url = URL(string: "https://api.openai.com/v1/responses")!
-    let imageURL = "data:image/jpeg;base64,\(imageData.base64EncodedString())"
+    var content: [[String: Any]] = [["type": "input_text", "text": prompt]]
+    if let imageData {
+      content.append([
+        "type": "input_image",
+        "image_url": "data:image/jpeg;base64,\(imageData.base64EncodedString())",
+      ])
+    }
     let body: [String: Any] = [
       "model": "gpt-5.4-mini",
       "input": [[
         "role": "user",
-        "content": [
-          ["type": "input_text", "text": prompt],
-          ["type": "input_image", "image_url": imageURL],
-        ],
+        "content": content,
       ]],
       "max_output_tokens": 4096,
     ]
@@ -121,6 +122,16 @@ struct CloudVisionClient {
       .trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { throw CloudVisionError.invalidResponse }
     return text
+  }
+
+  private func geminiParts(prompt: String, imageData: Data?) -> [[String: Any]] {
+    var parts: [[String: Any]] = [["text": prompt]]
+    if let imageData {
+      parts.append([
+        "inline_data": ["mime_type": "image/jpeg", "data": imageData.base64EncodedString()],
+      ])
+    }
+    return parts
   }
 
   private static func validate(_ response: URLResponse, data: Data? = nil) throws {

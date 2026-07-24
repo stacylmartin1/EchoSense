@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Shield
@@ -66,6 +65,8 @@ import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.home.OnlineConnectionDialog
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
 import com.google.ai.edge.gallery.ui.echosense.ARCoreDepthCameraView
+import com.google.ai.edge.gallery.ui.echosense.OnlineAnalysisHelper
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.delay
@@ -99,7 +100,7 @@ fun NavigationAssistanceScreen(
     val captureAndAnalyze = {
         val depthFrame = if (useDepthCamera) depthCameraView?.captureCurrentFrame() else null
         if (depthFrame != null) {
-            viewModel.analyzeBitmap(depthFrame)
+            viewModel.analyzeCapturedBitmap(depthFrame)
         } else if (useDepthCamera) {
             viewModel.reportDepthCameraNotReady()
         } else {
@@ -151,17 +152,24 @@ fun NavigationAssistanceScreen(
     val areSafetyAlertsSuppressed by viewModel.areSafetyAlertsSuppressed.collectAsState()
     val objectDescription by viewModel.objectDescription.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
-    val onlineKey by AppSettings.geminiApiKey.collectAsState()
     val onlineProvider by AppSettings.onlineProvider.collectAsState()
-    val onlineConsentGranted by AppSettings.onlineConsentGranted.collectAsState()
+    val pendingVoiceCommand by viewModel.pendingVoiceCommand.collectAsState()
     val cloudPromptRequested by AppSettings.cloudPromptRequested.collectAsState()
     var showOnlineConnection by remember { mutableStateOf(false) }
     var confirmOnlineAnalysis by remember { mutableStateOf(false) }
+    var pendingOnlineRequestIsVoice by remember { mutableStateOf(false) }
 
     val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
+    val modelDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]?.status
     val modelInitStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-    val isModelReady = modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
+    val isModelInstalled = modelDownloadStatus == ModelDownloadStatusType.SUCCEEDED
+    val isModelDownloadInProgress =
+        modelDownloadStatus == ModelDownloadStatusType.IN_PROGRESS ||
+            modelDownloadStatus == ModelDownloadStatusType.UNZIPPING
+    val isModelReady =
+        selectedModel.instance != null &&
+            modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
 
     // Collision avoidance state flows
     val boxes by viewModel.proximityBoxes.collectAsState()
@@ -176,14 +184,38 @@ fun NavigationAssistanceScreen(
     LaunchedEffect(useDepthCamera, depthCameraView) {
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
     }
+    LaunchedEffect(pendingVoiceCommand) {
+        if (pendingVoiceCommand != null) {
+            if (OnlineAnalysisHelper.isAvailable() && OnlineAnalysisHelper.hasValidatedInternet(context)) {
+                pendingOnlineRequestIsVoice = true
+                confirmOnlineAnalysis = true
+            } else {
+                viewModel.analyzePendingVoiceCommand(useOnline = false)
+            }
+        }
+    }
 
-    LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
-    LaunchedEffect(isAnalyzing) { if (isAnalyzing) viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
-    LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(modelDownloadStatus, isModelReady, isAnalyzing) {
+        if (modelDownloadStatus != null) {
+            viewModel.checkAndAnnounceStatusChanges(
+                isModelInstalled,
+                isModelDownloadInProgress,
+                isModelReady,
+                isAnalyzing,
+            )
+        }
+    }
     LaunchedEffect(permissionPromptResponded, hasCameraPermission, hasAudioPermission) {
         if (permissionPromptResponded && hasCameraPermission && hasAudioPermission) {
             delay(750)
-            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+            if (modelDownloadStatus != null) {
+                viewModel.retryStartupStatusAnnouncementAfterPermission(
+                    isModelInstalled,
+                    isModelDownloadInProgress,
+                    isModelReady,
+                    isAnalyzing,
+                )
+            }
         }
     }
 
@@ -356,34 +388,18 @@ fun NavigationAssistanceScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 EchoSenseActionButton(
-                    icon = if (isCollisionAvoidanceEnabled) Icons.Filled.Shield else Icons.Outlined.Shield,
-                    label = "Safety",
-                    contentDescription = if (isCollisionAvoidanceEnabled) "Disable collision avoidance" else "Enable collision avoidance",
-                    onClick = { viewModel.toggleCollisionAvoidance() },
-                    highlighted = isCollisionAvoidanceEnabled,
-                    highlightColor = Color(0xFFFF9800),
-                )
-                if (onlineKey.isNotBlank()) {
-                    EchoSenseActionButton(
-                        icon = Icons.Default.Cloud,
-                        label = "Online",
-                        contentDescription = "Analyze scene online with ${onlineProvider.displayName}",
-                        onClick = {
-                            if (onlineConsentGranted) {
-                                viewModel.startOnlineProcessing()
-                                captureAndAnalyze()
-                            } else {
-                                confirmOnlineAnalysis = true
-                            }
-                        },
-                        enabled = !isAnalyzing,
-                    )
-                }
-                EchoSenseActionButton(
                     icon = Icons.Default.CameraAlt,
                     label = "Analyze",
                     contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Analyzing scene" else "Analyze scene",
-                    onClick = { viewModel.startProcessing(); captureAndAnalyze() },
+                    onClick = {
+                        if (OnlineAnalysisHelper.isAvailable() && OnlineAnalysisHelper.hasValidatedInternet(context)) {
+                            pendingOnlineRequestIsVoice = false
+                            confirmOnlineAnalysis = true
+                        } else {
+                            viewModel.startOnDeviceProcessing()
+                            captureAndAnalyze()
+                        }
+                    },
                     enabled = !isAnalyzing && isModelReady,
                     highlighted = true,
                     highlightColor = Color(0xFF4CAF50),
@@ -393,6 +409,7 @@ fun NavigationAssistanceScreen(
                     label = "Voice",
                     contentDescription = "Activate voice command",
                     onClick = { if (hasAudioPermission) viewModel.startListening() else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                    enabled = !isAnalyzing,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.Stop,
@@ -402,6 +419,14 @@ fun NavigationAssistanceScreen(
                     enabled = isProcessing,
                     highlighted = true,
                     highlightColor = Color(0xFFF44336),
+                )
+                EchoSenseActionButton(
+                    icon = if (isCollisionAvoidanceEnabled) Icons.Filled.Shield else Icons.Outlined.Shield,
+                    label = "Safety",
+                    contentDescription = if (isCollisionAvoidanceEnabled) "Disable collision avoidance" else "Enable collision avoidance",
+                    onClick = { viewModel.toggleCollisionAvoidance() },
+                    highlighted = isCollisionAvoidanceEnabled,
+                    highlightColor = Color(0xFFFF9800),
                 )
             }
         }
@@ -425,20 +450,45 @@ fun NavigationAssistanceScreen(
     }
 
     if (confirmOnlineAnalysis) {
+        val useOnDevice = {
+            confirmOnlineAnalysis = false
+            if (pendingOnlineRequestIsVoice) {
+                viewModel.analyzePendingVoiceCommand(useOnline = false)
+            } else {
+                viewModel.startOnDeviceProcessing()
+                captureAndAnalyze()
+            }
+            pendingOnlineRequestIsVoice = false
+        }
         AlertDialog(
-            onDismissRequest = { confirmOnlineAnalysis = false },
-            title = { Text("Send this image to ${onlineProvider.displayName}?") },
-            text = { Text("The current image and prompt will be sent to the provider and may incur charges on your provider account.") },
+            onDismissRequest = useOnDevice,
+            title = { Text("Use ${onlineProvider.displayName} analysis?") },
+            text = {
+                Text(
+                    if (pendingOnlineRequestIsVoice) {
+                        "Your voice request and current image will be sent to ${onlineProvider.displayName}. Provider charges may apply. Use on-device to keep them on this device."
+                    } else {
+                        "The current image and prompt will be sent to ${onlineProvider.displayName}. Provider charges may apply. Use on-device to keep them on this device."
+                    }
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     confirmOnlineAnalysis = false
                     AppSettings.onlineConsentGranted.value = true
                     modelManagerViewModel.saveEchoSenseSettings()
-                    viewModel.startOnlineProcessing()
-                    captureAndAnalyze()
-                }) { Text("Send") }
+                    if (pendingOnlineRequestIsVoice) {
+                        viewModel.analyzePendingVoiceCommand(useOnline = true)
+                    } else {
+                        viewModel.startOnlineProcessing()
+                        captureAndAnalyze()
+                    }
+                    pendingOnlineRequestIsVoice = false
+                }) { Text("Use Online") }
             },
-            dismissButton = { TextButton(onClick = { confirmOnlineAnalysis = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = useOnDevice) { Text("Use On-device") }
+            },
         )
     }
 

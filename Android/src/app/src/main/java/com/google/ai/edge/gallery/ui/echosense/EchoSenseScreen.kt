@@ -1,4 +1,4 @@
-package com.google.ai.edge.gallery.ui.preview
+package com.google.ai.edge.gallery.ui.echosense
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material.icons.outlined.Settings
@@ -57,22 +58,22 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.common.tos.TosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
-import com.google.ai.edge.gallery.ui.echosense.ECHOSENSE_MODEL_IDS
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 private val TASK_BANNER_ITEMS = listOf(
     TaskBannerItem(BuiltInTaskId.NAVIGATION_ASSISTANCE, "Navigate", Icons.Outlined.Navigation),
     TaskBannerItem(BuiltInTaskId.CURRENCY_MODE, "Currency", Icons.Outlined.AttachMoney),
     TaskBannerItem(BuiltInTaskId.DOCUMENT_READER, "Read", Icons.Outlined.Description),
+    TaskBannerItem(BuiltInTaskId.ASSISTANT, "Assistant", Icons.Outlined.Forum),
     TaskBannerItem(BuiltInTaskId.DOCUMENT_TRANSLATOR, "Translate", Icons.Outlined.Translate),
 )
 
 @Composable
-fun PreviewScreen(
+fun EchoSenseScreen(
     modelManagerViewModel: ModelManagerViewModel,
     tosViewModel: TosViewModel,
 ) {
-    var selectedTaskId by rememberSaveable { mutableStateOf(BuiltInTaskId.NAVIGATION_ASSISTANCE) }
+    var selectedTaskId by remember { mutableStateOf(BuiltInTaskId.NAVIGATION_ASSISTANCE) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
     var showModelDownloadPrompt by rememberSaveable { mutableStateOf(true) }

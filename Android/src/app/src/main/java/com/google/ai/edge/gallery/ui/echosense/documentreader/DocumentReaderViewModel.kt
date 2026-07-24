@@ -12,6 +12,7 @@ import com.google.ai.edge.gallery.ui.echosense.EchoSenseBaseViewModel
 import com.google.ai.edge.gallery.ui.echosense.GeminiHelper
 import com.google.ai.edge.gallery.ui.echosense.OcrHelper
 import com.google.ai.edge.gallery.ui.echosense.TesseractOcrHelper
+import com.google.ai.edge.gallery.ui.echosense.VisualUtilityAnalyzer
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -200,6 +201,48 @@ class DocumentReaderViewModel @Inject constructor(
             Log.e(TAG, "Error processing camera image", e)
             imageProxy.close()
             _error.value = "Error: ${e.message}"
+        }
+    }
+
+    fun identifyCenterColor(imageProxy: ImageProxy) {
+        analyzeCameraUtility(imageProxy) { bitmap ->
+            VisualUtilityAnalyzer.centerColor(bitmap)?.spokenDescription
+        }
+    }
+
+    fun measureLightLevel(imageProxy: ImageProxy) {
+        analyzeCameraUtility(imageProxy) { bitmap ->
+            VisualUtilityAnalyzer.lightLevel(bitmap)?.spokenDescription
+        }
+    }
+
+    private fun analyzeCameraUtility(
+        imageProxy: ImageProxy,
+        analyzer: (Bitmap) -> String?,
+    ) {
+        try {
+            val source = imageProxyToBitmap(imageProxy)
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            imageProxy.close()
+            val bitmap = source?.let { rotateBitmapIfNeeded(it, rotation) }
+            val description = bitmap?.let(analyzer)
+            if (description == null) {
+                _error.value = "Camera frame is not ready"
+                announceAction("Camera frame is not ready.")
+                return
+            }
+            _activeModelName.value = "On-device camera"
+            _documentMode.value = DocumentMode.IMAGE
+            _totalPages.value = 1
+            _currentPage.value = 0
+            _documentText.value = description
+            _objectDescription.value = description
+            speakText(description)
+        } catch (error: Exception) {
+            imageProxy.close()
+            Log.e(TAG, "Camera utility analysis failed", error)
+            _error.value = "Could not analyze the camera image"
+            announceAction("Could not analyze the camera image.")
         }
     }
 

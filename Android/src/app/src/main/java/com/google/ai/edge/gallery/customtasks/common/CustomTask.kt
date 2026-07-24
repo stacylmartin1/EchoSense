@@ -43,17 +43,13 @@ import kotlinx.coroutines.CoroutineScope
  *    and associated models.
  * 3. Implement the `initializeModelFn` and `cleanUpModelFn` functions to handle the setup and
  *    teardown logic for your task's models.
- * 4. Implement the `MainScreen` composable to define the UI for your task's model detail screen.
- *    This is where the user will interact with the model within your task. It's important to note
- *    that this UI will be placed inside a pre-configured `Scaffold` that already handles the app
- *    bar, *which includes the model name, a model selector, and a configuration button. Your focus
- *    here should be on building the main content area of the screen.
+ * 4. Implement the `MainScreen` composable to define the function UI.
  * 5. Create a Hilt module and use `@Provides` and `@IntoSet` to bind your custom task
  *    implementation into a set of `CustomTask`s. This makes your task automatically discoverable by
- *    the app's home screen.
+ *    the EchoSense function bar.
  *
  * For concrete examples, see the task implementations under `ui/echosense/` (e.g.,
- * `navigationassistance/NavigationAssistanceTaskModule.kt`) or `ui/llmchat/LlmChatTaskModule.kt`.
+ * `navigationassistance/NavigationAssistanceTaskModule.kt`).
  *
  */
 interface CustomTask {
@@ -98,9 +94,9 @@ interface CustomTask {
   )
 
   /**
-   * The main Composable UI for your custom task's detail screen.
+   * The main Composable UI for the task.
    *
-   * @param data The data sent from the app. It will typically be a [CustomTaskData].
+   * @param data The [CustomTaskDataForBuiltinTask] sent from the EchoSense function bar.
    */
   @Composable fun MainScreen(data: Any)
 }

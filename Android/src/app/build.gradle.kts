@@ -20,7 +20,6 @@ plugins {
   alias(libs.plugins.google.services) apply false
   alias(libs.plugins.kotlin.android)
   alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.protobuf)
   alias(libs.plugins.hilt.application)
   kotlin("kapt")
@@ -31,7 +30,7 @@ android {
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.google.aiedge.gallery"
+    applicationId = "com.terranet.echosense.android"
     minSdk = 31
     targetSdk = 35
     versionCode = 17
@@ -39,7 +38,7 @@ android {
     ndk {
       abiFilters.add("arm64-v8a")
     }
-    manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
+    manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.EchoSenseApplication"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -79,16 +78,12 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.androidx.ui.tooling.preview)
   implementation(libs.androidx.material3)
-  implementation(libs.androidx.compose.navigation)
-  implementation(libs.kotlinx.serialization.json)
-  implementation(libs.kotlin.reflect)
   implementation(libs.material.icon.extended)
   implementation(libs.androidx.work.runtime)
   implementation(libs.androidx.datastore)
   implementation(libs.com.google.code.gson)
   implementation(libs.androidx.lifecycle.process)
   implementation(libs.androidx.security.crypto)
-  implementation(libs.androidx.webkit)
   implementation(libs.androidx.browser)
   implementation(libs.litertlm)
   implementation(libs.commonmark)
@@ -102,7 +97,6 @@ dependencies {
   implementation(libs.camerax.camera2)
   implementation(libs.camerax.lifecycle)
   implementation(libs.camerax.view)
-  implementation(libs.androidx.splashscreen)
   implementation(libs.protobuf.javalite)
   implementation(libs.hilt.android)
   implementation(libs.hilt.navigation.compose)

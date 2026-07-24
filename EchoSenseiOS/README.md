@@ -6,10 +6,12 @@ The iOS app is written in SwiftUI and shares the EchoSense workflow and model ca
 
 ## Features
 
+- **Assistant** provides multi-turn text or voice chat and can analyze a live camera image, photo, PDF, or text document.
 - **Navigate** describes the current scene and accepts optional voice commands such as “help me find my keys.”
 - **Safety** combines object detection with synchronized LiDAR range data on supported iPhones, identifies broad wall-like surfaces, and falls back to camera-relative proximity estimates.
 - **Currency** identifies visible bank notes.
-- **Read** extracts text from the camera, photos, and imported documents and reads it aloud.
+- **Read** extracts text from the camera, photos, and imported documents, reads it aloud,
+  identifies the approximate center color, and reports the camera-relative light level.
 - **Translate** extracts document text and translates it to English.
 - **On-device analysis** runs a downloaded Gemma multimodal model through LiteRT-LM.
 - **Optional online analysis** supports user-provided Gemini or OpenAI API keys and configurable ask, fallback, or prefer-online behavior.

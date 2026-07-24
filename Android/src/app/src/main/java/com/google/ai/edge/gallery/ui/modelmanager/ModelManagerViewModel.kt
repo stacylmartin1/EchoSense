@@ -97,8 +97,8 @@ data class ModelManagerUiState(
   val configValuesUpdateTrigger: Long = 0L,
 ) {
   fun isModelInitialized(model: Model): Boolean {
-    return modelInitializationStatus[model.name]?.status ==
-      ModelInitializationStatusType.INITIALIZED
+    return model.instance != null &&
+      modelInitializationStatus[model.name]?.status == ModelInitializationStatusType.INITIALIZED
   }
 
   fun isModelInitializing(model: Model): Boolean {
@@ -256,14 +256,24 @@ constructor(
 
   fun initializeModel(context: Context, task: Task, model: Model, force: Boolean = false) {
     viewModelScope.launch(Dispatchers.Default) {
-      // Skip if initialized already.
+      // The status map is keyed by name, so never trust it without checking the exact
+      // Model object's native instance as well.
       if (
         !force &&
+          model.instance != null &&
           uiState.value.modelInitializationStatus[model.name]?.status ==
             ModelInitializationStatusType.INITIALIZED
       ) {
         Log.d(TAG, "Model '${model.name}' has been initialized. Skipping.")
         return@launch
+      }
+      if (
+        model.instance == null &&
+          uiState.value.modelInitializationStatus[model.name]?.status ==
+            ModelInitializationStatusType.INITIALIZED
+      ) {
+        Log.w(TAG, "Repairing stale initialized state for '${model.name}' with no native instance")
+        updateModelInitializationStatus(model, ModelInitializationStatusType.NOT_INITIALIZED)
       }
 
       // Skip if initialization is in progress.
@@ -288,7 +298,11 @@ constructor(
       cleanupModel(context = context, task = task, model = model)
 
       // Start initialization.
-      Log.d(TAG, "Initializing model '${model.name}'...")
+      Log.d(
+        TAG,
+        "Initializing model '${model.name}'; object=${System.identityHashCode(model)} " +
+          "existingInstance=${model.instance != null}",
+      )
       model.initializing = true
       updateModelInitializationStatus(
         model = model,

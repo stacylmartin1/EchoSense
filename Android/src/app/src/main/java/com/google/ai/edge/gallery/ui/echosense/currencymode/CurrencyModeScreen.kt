@@ -52,6 +52,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
@@ -106,8 +107,15 @@ fun CurrencyModeScreen(
 
     val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
+    val modelDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]?.status
     val modelInitStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-    val isModelReady = modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
+    val isModelInstalled = modelDownloadStatus == ModelDownloadStatusType.SUCCEEDED
+    val isModelDownloadInProgress =
+        modelDownloadStatus == ModelDownloadStatusType.IN_PROGRESS ||
+            modelDownloadStatus == ModelDownloadStatusType.UNZIPPING
+    val isModelReady =
+        selectedModel.instance != null &&
+            modelInitStatus?.status == ModelInitializationStatusType.INITIALIZED
 
     LaunchedEffect(key1 = true) {
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
@@ -115,13 +123,27 @@ fun CurrencyModeScreen(
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
     }
 
-    LaunchedEffect(isModelReady) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
-    LaunchedEffect(isAnalyzing) { if (isAnalyzing) viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
-    LaunchedEffect(modelInitStatus?.status) { viewModel.checkAndAnnounceStatusChanges(isModelReady, isAnalyzing) }
+    LaunchedEffect(modelDownloadStatus, isModelReady, isAnalyzing) {
+        if (modelDownloadStatus != null) {
+            viewModel.checkAndAnnounceStatusChanges(
+                isModelInstalled,
+                isModelDownloadInProgress,
+                isModelReady,
+                isAnalyzing,
+            )
+        }
+    }
     LaunchedEffect(permissionPromptResponded, hasCameraPermission, hasAudioPermission) {
         if (permissionPromptResponded && hasCameraPermission && hasAudioPermission) {
             delay(750)
-            viewModel.retryStartupStatusAnnouncementAfterPermission(isModelReady, isAnalyzing)
+            if (modelDownloadStatus != null) {
+                viewModel.retryStartupStatusAnnouncementAfterPermission(
+                    isModelInstalled,
+                    isModelDownloadInProgress,
+                    isModelReady,
+                    isAnalyzing,
+                )
+            }
         }
     }
 

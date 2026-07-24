@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import UniformTypeIdentifiers
 
 struct FeatureSessionView: View {
@@ -8,41 +9,52 @@ struct FeatureSessionView: View {
   @State private var showingDocumentImporter = false
   @State private var showingCloudSetup = false
   @State private var confirmingOnlineAnalysis = false
+  @State private var hasPendingPreferredAnalysis = false
+  @State private var pendingPreferredAnalysisPrompt: String?
+  @State private var showingAssistantImporter = false
+  @State private var assistantPhotoItem: PhotosPickerItem?
+  @State private var confirmingAssistantOnline = false
+  @State private var pendingAssistantOnlineSelection = false
+  @State private var assistantFollowsLatest = true
 
   var body: some View {
     ZStack {
-      previewLayer
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
-
-      if viewModel.feature.supportsCollisionAvoidance && viewModel.collisionAvoidanceAvailable {
-        detectionOverlay
+      if viewModel.feature == .assistant {
+        assistantView
+      } else {
+        previewLayer
           .ignoresSafeArea()
-      }
+          .accessibilityHidden(true)
 
-      VStack(spacing: 0) {
-        if settings.textOverlayEnabled {
-          HStack(alignment: .top) {
-            statusOverlay
-            Spacer()
-          }
-          .padding(.horizontal, 12)
-          .padding(.top, 8)
+        if viewModel.feature.supportsCollisionAvoidance && viewModel.collisionAvoidanceAvailable {
+          detectionOverlay
+            .ignoresSafeArea()
         }
 
-        Spacer()
+        VStack(spacing: 0) {
+          if settings.textOverlayEnabled {
+            HStack(alignment: .top) {
+              statusOverlay
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+          }
 
-        if settings.textOverlayEnabled {
-          resultOverlay
+          Spacer()
+
+          if settings.textOverlayEnabled {
+            resultOverlay
+              .padding(.horizontal, 12)
+              .padding(.bottom, 8)
+          }
+
+          featureControlsOverlay
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
+
+          bottomModeBar
         }
-
-        featureControlsOverlay
-          .padding(.horizontal, 12)
-          .padding(.bottom, 8)
-
-        bottomModeBar
       }
     }
     .onAppear { viewModel.onAppear(settings: settings) }
@@ -59,24 +71,339 @@ struct FeatureSessionView: View {
     } message: {
       Text("Connect your own AI provider for optional online scene analysis. Your key stays on this device.")
     }
+    .alert(
+      "Use \(settings.cloudProvider.displayName) Analysis?",
+      isPresented: $confirmingOnlineAnalysis
+    ) {
+      Button("Use Online") {
+        runPendingPreferredAnalysis(forceOnline: true)
+      }
+      Button("Use On-device", role: .cancel) {
+        runPendingPreferredAnalysis(forceOnline: false)
+      }
+    } message: {
+      Text(
+        pendingPreferredAnalysisPrompt == nil
+          ? "The current image and prompt will be sent to \(settings.cloudProvider.displayName). Provider charges may apply. Use on-device to keep them on this device."
+          : "Your voice request and current image will be sent to \(settings.cloudProvider.displayName). Provider charges may apply. Use on-device to keep them on this device."
+      )
+    }
     .confirmationDialog(
-      "Send this image to \(settings.cloudProvider.displayName)?",
-      isPresented: $confirmingOnlineAnalysis,
+      "Use \(settings.cloudProvider.displayName) for chat?",
+      isPresented: $confirmingAssistantOnline,
       titleVisibility: .visible
     ) {
-      Button("Send for Online Analysis") {
+      Button("Use Online") {
         settings.cloudConsentGranted = true
-        viewModel.analyze(settings: settings, forceOnline: true)
+        viewModel.setAssistantModelMode(.online)
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("The current image and prompt will be sent to the provider and may incur charges on your provider account.")
+      Text("Your messages and any attached image or document will be sent to \(settings.cloudProvider.displayName). Provider charges may apply.")
     }
-    .sheet(isPresented: $showingCloudSetup) {
+    .sheet(isPresented: $showingCloudSetup, onDismiss: finishPendingAssistantOnlineSelection) {
       CloudConnectionView()
         .environmentObject(settings)
     }
+    .fileImporter(
+      isPresented: $showingAssistantImporter,
+      allowedContentTypes: [.pdf, .image, .plainText, .text],
+      allowsMultipleSelection: false
+    ) { result in
+      if case let .success(urls) = result, let url = urls.first {
+        viewModel.attachAssistantFile(url: url)
+      }
+    }
+    .onChange(of: assistantPhotoItem) { _, item in
+      guard let item else { return }
+      Task {
+        if let data = try? await item.loadTransferable(type: Data.self) {
+          viewModel.attachAssistantPhoto(data: data)
+        }
+        assistantPhotoItem = nil
+      }
+    }
+    .onChange(of: viewModel.pendingNavigationVoiceCommand) { _, command in
+      guard let command else { return }
+      viewModel.clearPendingNavigationVoiceCommand()
+      requestPreferredAnalysis(customPrompt: command)
+    }
     .accessibilityElement(children: .contain)
+  }
+
+  private var assistantView: some View {
+    VStack(spacing: 0) {
+      HStack {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Assistant").font(.title2.bold())
+          Text(viewModel.isAnalyzing ? viewModel.analysisStage : (viewModel.activeModelName ?? "Ready"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button("New Chat", action: viewModel.newAssistantChat)
+          .disabled(viewModel.assistantMessages.isEmpty && viewModel.assistantAttachmentName == nil)
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+
+      Divider()
+
+      HStack(spacing: 8) {
+        assistantModelButton(
+          title: "On-device",
+          systemImage: "iphone",
+          mode: .onDevice
+        ) {
+          viewModel.setAssistantModelMode(.onDevice)
+        }
+        assistantModelButton(
+          title: settings.isCloudConnected ? settings.cloudProvider.displayName : "Online",
+          systemImage: viewModel.isNetworkAvailable ? "cloud.fill" : "wifi.slash",
+          mode: .online
+        ) {
+          selectAssistantOnline()
+        }
+        .disabled(!viewModel.isNetworkAvailable)
+        .accessibilityHint(
+          viewModel.isNetworkAvailable
+            ? "Uses the configured online AI provider"
+            : "Unavailable without an internet connection"
+        )
+        Spacer()
+        Text(viewModel.assistantVoiceInputStatus)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .multilineTextAlignment(.trailing)
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 8)
+
+      ScrollViewReader { proxy in
+        ZStack(alignment: .bottomTrailing) {
+          ScrollView {
+            LazyVStack(spacing: 12) {
+              if viewModel.assistantMessages.isEmpty {
+                ContentUnavailableView(
+                  "Ask EchoSense",
+                  systemImage: "bubble.left.and.bubble.right",
+                  description: Text("Type or speak a question, or attach an image, PDF, or text document.")
+                )
+                .padding(.top, 50)
+              }
+              ForEach(viewModel.assistantMessages) { message in
+                assistantBubble(message)
+                  .id(message.id)
+              }
+            }
+            .padding(16)
+          }
+          .simultaneousGesture(
+            DragGesture(minimumDistance: 4)
+              .onChanged { _ in assistantFollowsLatest = false }
+          )
+
+          if !assistantFollowsLatest, !viewModel.assistantMessages.isEmpty {
+            Button {
+              assistantFollowsLatest = true
+              scrollAssistantToLatest(proxy)
+            } label: {
+              Label("Latest", systemImage: "arrow.down")
+                .font(.caption.bold())
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(12)
+          }
+        }
+        .onChange(of: viewModel.assistantMessages.count) { oldCount, _ in
+          if viewModel.assistantMessages.count > oldCount {
+            assistantFollowsLatest = true
+          }
+          scrollAssistantToLatest(proxy)
+        }
+        .onChange(of: viewModel.assistantMessages.last?.text.count) { _, _ in
+          scrollAssistantToLatest(proxy)
+        }
+      }
+
+      if let attachmentName = viewModel.assistantAttachmentName {
+        HStack(spacing: 10) {
+          if let image = viewModel.assistantAttachmentImage {
+            Image(uiImage: image)
+              .resizable()
+              .scaledToFill()
+              .frame(width: 48, height: 48)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+          } else {
+            Image(systemName: "doc.text.fill")
+              .font(.title2)
+              .frame(width: 48, height: 48)
+          }
+          Text(attachmentName)
+            .lineLimit(2)
+            .font(.callout)
+          Spacer()
+          Button(role: .destructive, action: viewModel.removeAssistantAttachment) {
+            Image(systemName: "xmark.circle.fill")
+          }
+          .accessibilityLabel("Remove attachment")
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 12)
+      }
+
+      if let error = viewModel.errorMessage {
+        Text(error)
+          .font(.caption)
+          .foregroundStyle(.red)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 16)
+          .padding(.top, 6)
+      }
+
+      HStack(spacing: 12) {
+        Button(action: viewModel.captureAssistantCameraImage) {
+          Image(systemName: "camera.fill")
+        }
+        .accessibilityLabel("Attach camera image")
+
+        PhotosPicker(selection: $assistantPhotoItem, matching: .images) {
+          Image(systemName: "photo.fill")
+        }
+        .accessibilityLabel("Attach photo")
+
+        Button { showingAssistantImporter = true } label: {
+          Image(systemName: "paperclip")
+        }
+        .accessibilityLabel("Attach document")
+
+        TextField("Message", text: $viewModel.assistantDraft, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(1...4)
+          .submitLabel(.send)
+          .onSubmit { viewModel.sendAssistantMessage(settings: settings) }
+
+        Button { viewModel.toggleAssistantVoice(settings: settings) } label: {
+          Image(systemName: viewModel.isListeningForAssistant ? "mic.fill" : "mic")
+            .foregroundStyle(viewModel.isListeningForAssistant ? .red : .primary)
+        }
+        .disabled(viewModel.isAnalyzing)
+        .accessibilityLabel(viewModel.isListeningForAssistant ? "Finish voice message" : "Speak message")
+
+        Button {
+          if viewModel.isAnalyzing {
+            viewModel.stopCurrentAction()
+          } else {
+            viewModel.sendAssistantMessage(settings: settings)
+          }
+        } label: {
+          Image(systemName: viewModel.isAnalyzing ? "stop.fill" : "arrow.up.circle.fill")
+            .font(.title2)
+        }
+        .disabled(!viewModel.isAnalyzing && viewModel.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .accessibilityLabel(viewModel.isAnalyzing ? "Stop response" : "Send message")
+      }
+      .font(.title3)
+      .padding(12)
+      .background(.regularMaterial)
+
+      bottomModeBar
+    }
+    .background(Color(uiColor: .systemGroupedBackground))
+    .onChange(of: viewModel.isNetworkAvailable) { _, available in
+      if !available, viewModel.assistantModelMode == .online {
+        viewModel.setAssistantModelMode(.onDevice)
+      }
+    }
+    .onChange(of: settings.isCloudConnected) { _, connected in
+      if !connected, viewModel.assistantModelMode == .online {
+        viewModel.setAssistantModelMode(.onDevice)
+      }
+    }
+  }
+
+  private func assistantBubble(_ message: AssistantChatMessage) -> some View {
+    HStack {
+      if message.role == .user { Spacer(minLength: 45) }
+      assistantMessageText(message)
+        .textSelection(.enabled)
+        .padding(12)
+        .foregroundStyle(message.role == .user ? Color.white : Color.primary)
+        .background(
+          message.role == .user ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground),
+          in: RoundedRectangle(cornerRadius: 16)
+        )
+        .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+      if message.role == .assistant { Spacer(minLength: 45) }
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(message.role == .user ? "You" : "Assistant"): \(message.text)")
+  }
+
+  private func assistantMessageText(_ message: AssistantChatMessage) -> Text {
+    guard message.role == .assistant, !message.text.isEmpty,
+          let attributed = try? AttributedString(
+            markdown: message.text,
+            options: .init(interpretedSyntax: .full)
+          ) else {
+      return Text(message.text.isEmpty ? "Thinking…" : message.text)
+    }
+    return Text(attributed)
+  }
+
+  private func assistantModelButton(
+    title: String,
+    systemImage: String,
+    mode: AssistantModelMode,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      Label(title, systemImage: systemImage)
+        .font(.caption.bold())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .foregroundStyle(viewModel.assistantModelMode == mode ? Color.white : Color.primary)
+        .background(
+          viewModel.assistantModelMode == mode ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground),
+          in: Capsule()
+        )
+    }
+    .buttonStyle(.plain)
+    .disabled(viewModel.isAnalyzing)
+    .accessibilityAddTraits(viewModel.assistantModelMode == mode ? .isSelected : [])
+  }
+
+  private func selectAssistantOnline() {
+    guard viewModel.isNetworkAvailable else { return }
+    guard settings.isCloudConnected else {
+      pendingAssistantOnlineSelection = true
+      settings.beginCloudSetup()
+      showingCloudSetup = true
+      return
+    }
+    if settings.cloudConsentGranted {
+      viewModel.setAssistantModelMode(.online)
+    } else {
+      confirmingAssistantOnline = true
+    }
+  }
+
+  private func finishPendingAssistantOnlineSelection() {
+    guard pendingAssistantOnlineSelection else { return }
+    pendingAssistantOnlineSelection = false
+    guard settings.isCloudConnected, viewModel.isNetworkAvailable else { return }
+    if settings.cloudConsentGranted {
+      viewModel.setAssistantModelMode(.online)
+    } else {
+      confirmingAssistantOnline = true
+    }
+  }
+
+  private func scrollAssistantToLatest(_ proxy: ScrollViewProxy) {
+    guard assistantFollowsLatest, let id = viewModel.assistantMessages.last?.id else { return }
+    proxy.scrollTo(id, anchor: .bottom)
   }
 
   private var previewLayer: some View {
@@ -98,7 +425,7 @@ struct FeatureSessionView: View {
     VStack(alignment: .leading, spacing: 6) {
       Text(viewModel.feature.title)
         .font(.caption.bold())
-      Text(viewModel.isAnalyzing ? "Analyzing" : viewModel.isModelReady ? "Ready" : "Model Loading")
+      Text(viewModel.modelStatusText)
       if !viewModel.analysisStage.isEmpty {
         Text(viewModel.analysisStage)
           .foregroundStyle(.secondary)
@@ -203,8 +530,9 @@ struct FeatureSessionView: View {
         if viewModel.feature == .navigation {
           voiceCommandButton
         }
-        if settings.isCloudConnected && viewModel.feature.usesLocalLLM {
-          onlineAnalysisButton
+        if viewModel.feature == .documentReader {
+          colorButton
+          lightButton
         }
         stopButton
 
@@ -244,7 +572,7 @@ struct FeatureSessionView: View {
 
   private var primaryActionButton: some View {
     Button {
-      viewModel.analyze(settings: settings)
+      requestPreferredAnalysis()
     } label: {
       iconLabel(
         systemName: "camera.viewfinder",
@@ -255,23 +583,30 @@ struct FeatureSessionView: View {
     .buttonStyle(IconCaptionButtonStyle())
     .disabled(viewModel.isAnalyzing || viewModel.isListeningForVoiceCommand)
     .accessibilityLabel(viewModel.feature.defaultActionTitle)
-    .accessibilityHint("Captures the current camera frame for \(viewModel.feature.title).")
+    .accessibilityHint("Captures the current camera frame. When online analysis is available, asks before sending; otherwise uses the on-device model.")
   }
 
-  private var onlineAnalysisButton: some View {
-    Button {
-      if settings.cloudConsentGranted {
-        viewModel.analyze(settings: settings, forceOnline: true)
-      } else {
-        confirmingOnlineAnalysis = true
-      }
-    } label: {
-      iconLabel(systemName: "cloud.fill", title: "Online")
+  private func requestPreferredAnalysis(customPrompt: String? = nil) {
+    if settings.isCloudConnected && viewModel.isNetworkAvailable {
+      pendingPreferredAnalysisPrompt = customPrompt
+      hasPendingPreferredAnalysis = true
+      confirmingOnlineAnalysis = true
+    } else {
+      viewModel.analyze(settings: settings, customPrompt: customPrompt, forceLocal: true)
     }
-    .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing || viewModel.isListeningForVoiceCommand)
-    .accessibilityLabel("Online analysis")
-    .accessibilityHint("Captures the current image and sends it to \(settings.cloudProvider.displayName) for analysis.")
+  }
+
+  private func runPendingPreferredAnalysis(forceOnline: Bool) {
+    guard hasPendingPreferredAnalysis else { return }
+    let customPrompt = pendingPreferredAnalysisPrompt
+    hasPendingPreferredAnalysis = false
+    pendingPreferredAnalysisPrompt = nil
+    if forceOnline {
+      settings.cloudConsentGranted = true
+      viewModel.analyze(settings: settings, customPrompt: customPrompt, forceOnline: true)
+    } else {
+      viewModel.analyze(settings: settings, customPrompt: customPrompt, forceLocal: true)
+    }
   }
 
   private var stopButton: some View {
@@ -283,6 +618,30 @@ struct FeatureSessionView: View {
     .buttonStyle(IconCaptionButtonStyle())
     .accessibilityLabel("Stop")
     .accessibilityHint("Stops speech and cancels the current action.")
+  }
+
+  private var colorButton: some View {
+    Button {
+      viewModel.identifyCenterColor()
+    } label: {
+      iconLabel(systemName: "paintpalette.fill", title: "Color")
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing)
+    .accessibilityLabel("Identify center color")
+    .accessibilityHint("Speaks the approximate color at the center of the camera view. Lighting can affect the result.")
+  }
+
+  private var lightButton: some View {
+    Button {
+      viewModel.measureLightLevel()
+    } label: {
+      iconLabel(systemName: "sun.max.fill", title: "Light")
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing)
+    .accessibilityLabel("Measure light level")
+    .accessibilityHint("Speaks the approximate brightness seen by the camera. This is not a calibrated lux measurement.")
   }
 
   private var collisionToggleButton: some View {
@@ -367,7 +726,7 @@ struct FeatureSessionView: View {
 
   private var statusAccessibilityLabel: String {
     var parts = [viewModel.feature.title]
-    parts.append(viewModel.isAnalyzing ? "Analyzing" : viewModel.isModelReady ? "Ready" : "Model loading")
+    parts.append(viewModel.modelStatusText)
     if !viewModel.analysisStage.isEmpty {
       parts.append(viewModel.analysisStage)
     }

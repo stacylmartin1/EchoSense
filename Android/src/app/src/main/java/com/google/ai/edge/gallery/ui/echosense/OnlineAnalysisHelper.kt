@@ -1,6 +1,9 @@
 package com.google.ai.edge.gallery.ui.echosense
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Base64
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.home.OnlineProvider
@@ -17,6 +20,14 @@ object OnlineAnalysisHelper {
   private const val TIMEOUT_MS = 60_000
 
   fun isAvailable(): Boolean = AppSettings.isOnlineConnected()
+
+  fun hasValidatedInternet(context: Context): Boolean {
+    val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return false
+    val network = connectivity.activeNetwork ?: return false
+    val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+      capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+  }
 
   suspend fun validateKey(provider: OnlineProvider, apiKey: String) = withContext(Dispatchers.IO) {
     val connection =
@@ -38,6 +49,11 @@ object OnlineAnalysisHelper {
   }
 
   suspend fun analyzeImage(bitmap: Bitmap, prompt: String): String = withContext(Dispatchers.IO) {
+    generate(prompt = prompt, bitmap = bitmap)
+  }
+
+  /** Generates a response with optional visual context for Assistant and analysis tasks. */
+  suspend fun generate(prompt: String, bitmap: Bitmap? = null): String = withContext(Dispatchers.IO) {
     val apiKey = AppSettings.geminiApiKey.value
     require(apiKey.isNotBlank()) { "Online analysis is not connected" }
     when (AppSettings.onlineProvider.value) {
@@ -46,10 +62,10 @@ object OnlineAnalysisHelper {
     }
   }
 
-  private fun analyzeGemini(bitmap: Bitmap, prompt: String, apiKey: String): String {
+  private fun analyzeGemini(bitmap: Bitmap?, prompt: String, apiKey: String): String {
     val parts = JSONArray()
       .put(JSONObject().put("text", prompt))
-      .put(
+    if (bitmap != null) parts.put(
         JSONObject().put(
           "inline_data",
           JSONObject()
@@ -80,10 +96,10 @@ object OnlineAnalysisHelper {
     }
   }
 
-  private fun analyzeOpenAI(bitmap: Bitmap, prompt: String, apiKey: String): String {
+  private fun analyzeOpenAI(bitmap: Bitmap?, prompt: String, apiKey: String): String {
     val content = JSONArray()
       .put(JSONObject().put("type", "input_text").put("text", prompt))
-      .put(
+    if (bitmap != null) content.put(
         JSONObject()
           .put("type", "input_image")
           .put("image_url", "data:image/jpeg;base64,${bitmapToBase64(bitmap)}")

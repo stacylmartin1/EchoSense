@@ -163,7 +163,7 @@ class StreamingSentenceChunkerTest {
 
     @Test
     fun `punctuation at end of buffer waits for more tokens`() {
-        chunker.onToken("This is a sentence.")
+        chunker.onToken("This is a complete sentence.")
         // Period at end of buffer, no whitespace after — should NOT emit yet
         assertFalse(chunker.hasQueuedSentences())
 
@@ -171,7 +171,7 @@ class StreamingSentenceChunkerTest {
         chunker.onToken(" Next sentence starts here. ")
         assertTrue(chunker.hasQueuedSentences())
         val first = chunker.pollSentence()
-        assertEquals("This is a sentence.", first)
+        assertEquals("This is a complete sentence.", first)
     }
 
     @Test

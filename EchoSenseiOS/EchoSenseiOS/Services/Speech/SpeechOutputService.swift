@@ -134,7 +134,7 @@ final class SpeechOutputService: NSObject, ObservableObject {
   }
 
   private func speak(_ text: String, interrupt: Bool) {
-    let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let clean = SpeechTextSanitizer.sanitize(text)
     guard !clean.isEmpty else { return }
     configureAudioSession()
 
@@ -203,6 +203,34 @@ final class SpeechOutputService: NSObject, ObservableObject {
     } catch {
       // Speech can still work with the current system session; keep trying.
     }
+  }
+}
+
+private enum SpeechTextSanitizer {
+  static func sanitize(_ text: String) -> String {
+    var result = text
+    result = replacing(#"```[\w+-]*\s*"#, in: result, with: "")
+    result = result.replacingOccurrences(of: "```", with: "")
+    result = replacing(#"!\[([^\]]*)\]\([^)]*\)"#, in: result, with: "$1")
+    result = replacing(#"\[([^\]]+)\]\([^)]*\)"#, in: result, with: "$1")
+    result = replacing(#"(?m)^\s{0,3}#{1,6}\s+"#, in: result, with: "")
+    result = replacing(#"(?m)^\s*>\s?"#, in: result, with: "")
+    result = replacing(#"(?m)^\s*(?:[-+*]|\d+[.)])\s+"#, in: result, with: "")
+    result = replacing(#"[*_~`]"#, in: result, with: "")
+    result = replacing(#"<[^>]+>"#, in: result, with: " ")
+    result = result.replacingOccurrences(of: "|", with: ",")
+    result = replacing(#"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]"#, in: result, with: "")
+    result = replacing(#"[ \t]+"#, in: result, with: " ")
+    result = replacing(#"(?<![.!?;:])\s*\n+\s*"#, in: result, with: ". ")
+    result = replacing(#"\s*\n+\s*"#, in: result, with: " ")
+    result = replacing(#"(?:\.\s*){2,}"#, in: result, with: ". ")
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func replacing(_ pattern: String, in text: String, with replacement: String) -> String {
+    guard let expression = try? NSRegularExpression(pattern: pattern) else { return text }
+    let range = NSRange(text.startIndex..., in: text)
+    return expression.stringByReplacingMatches(in: text, range: range, withTemplate: replacement)
   }
 }
 

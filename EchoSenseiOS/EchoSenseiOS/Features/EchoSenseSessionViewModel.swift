@@ -1,7 +1,45 @@
 import AVFoundation
 import Foundation
+import Network
 import OSLog
 import UIKit
+import UniformTypeIdentifiers
+
+struct AssistantChatMessage: Identifiable, Equatable {
+  enum Role: String {
+    case user
+    case assistant
+  }
+
+  let id: UUID
+  let role: Role
+  var text: String
+
+  init(id: UUID = UUID(), role: Role, text: String) {
+    self.id = id
+    self.role = role
+    self.text = text
+  }
+}
+
+enum AssistantModelMode: String {
+  case onDevice
+  case online
+}
+
+enum AssistantChatError: LocalizedError {
+  case onlineProviderNotConnected
+  case internetUnavailable
+
+  var errorDescription: String? {
+    switch self {
+    case .onlineProviderNotConnected:
+      "Connect an online provider before using online chat."
+    case .internetUnavailable:
+      "Online chat is unavailable while this device is offline. Choose On-device to continue."
+    }
+  }
+}
 
 @MainActor
 final class EchoSenseSessionViewModel: NSObject, ObservableObject {
@@ -11,6 +49,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   @Published var isModelReady = false
   @Published var isAnalyzing = false
   @Published var isListeningForVoiceCommand = false
+  @Published var pendingNavigationVoiceCommand: String?
   @Published var analysisStage = ""
   @Published var voiceCommandText = ""
   @Published var transcript = ""
@@ -24,6 +63,13 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   @Published var analysisSensorContext = ""
   @Published var isLocalModelReady = false
   @Published var hasStagedLocalModel = false
+  @Published var assistantMessages: [AssistantChatMessage] = []
+  @Published var assistantDraft = ""
+  @Published var assistantAttachmentName: String?
+  @Published var assistantAttachmentImage: UIImage?
+  @Published var isListeningForAssistant = false
+  @Published var assistantModelMode: AssistantModelMode = .onDevice
+  @Published private(set) var isNetworkAvailable = false
 
   let camera = CameraFrameSource()
 
@@ -35,6 +81,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private let documentTextExtractor = DocumentTextExtractor()
   private let objectDetector: ObjectDetectionService = MediaPipeObjectDetectionService.shared
   private let localModelStore = LocalModelStore()
+  private let networkMonitor = NWPathMonitor()
+  private let networkMonitorQueue = DispatchQueue(label: "com.terranet.echosense.network-monitor")
 
   private var latestSampleBuffer: CMSampleBuffer?
   private var lastAlertTime: Date = .distantPast
@@ -57,6 +105,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var stagedLocalModelURL: URL?
   private var settings: AppSettings?
   private var safetyAnnouncementsSuspendedForAnalysis = false
+  private var assistantDocumentText: String?
+  private var hasInitializedAssistantModelMode = false
 
   init(feature: EchoSenseFeature) {
     self.feature = feature
@@ -64,6 +114,12 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     camera.delegate = self
     collisionAvoidanceAvailable = objectDetector.isAvailable
     isModelReady = feature != .navigation || objectDetector.isAvailable
+    networkMonitor.pathUpdateHandler = { [weak self] path in
+      Task { @MainActor [weak self] in
+        self?.isNetworkAvailable = path.status == .satisfied
+      }
+    }
+    networkMonitor.start(queue: networkMonitorQueue)
   }
 
   func onAppear(settings: AppSettings) {
@@ -76,6 +132,13 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       }
     }
     speech.setVoiceIdentifier(settings.selectedVoiceIdentifier)
+    if feature == .assistant, !hasInitializedAssistantModelMode {
+      hasInitializedAssistantModelMode = true
+      assistantModelMode =
+        settings.isCloudConnected && settings.cloudUsageMode == .preferOnline
+        ? .online
+        : .onDevice
+    }
     rememberPersistedLocalModelIfNeeded()
     objectDetector.onLiveDetections = { [weak self] boxes in
       Task { @MainActor in
@@ -86,6 +149,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     if feature.supportsCollisionAvoidance {
       collisionAvoidanceEnabled = objectDetector.isAvailable
       prepareObjectDetector()
+    }
+    if feature.usesLocalLLM {
       scheduleFallbackStartupAnnouncement()
     }
     camera.requestPermissionAndStart()
@@ -97,7 +162,9 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     feature = newFeature
     voiceCommands.stop()
     isListeningForVoiceCommand = false
+    isListeningForAssistant = false
     voiceCommandText = ""
+    pendingNavigationVoiceCommand = nil
     transcript = ""
     errorMessage = nil
     proximityAlert = nil
@@ -117,6 +184,9 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
 
     if newFeature.supportsCollisionAvoidance {
       prepareObjectDetector()
+    }
+    if newFeature.usesLocalLLM {
+      scheduleFallbackStartupAnnouncement()
     } else {
       startupAnnouncementTask?.cancel()
     }
@@ -143,6 +213,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     analysisTask?.cancel()
     voiceCommands.stop()
     isListeningForVoiceCommand = false
+    pendingNavigationVoiceCommand = nil
+    isListeningForAssistant = false
     localLLM.cancelGeneration()
     localLLM.diagnosticHandler = nil
     localModelLoadTask?.cancel()
@@ -166,7 +238,12 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     camera.requestPermissionAndStart()
   }
 
-  func analyze(settings: AppSettings, customPrompt: String? = nil, forceOnline: Bool = false) {
+  func analyze(
+    settings: AppSettings,
+    customPrompt: String? = nil,
+    forceOnline: Bool = false,
+    forceLocal: Bool = false
+  ) {
     Self.logger.notice("Analyze button pressed; isAnalyzing=\(self.isAnalyzing, privacy: .public)")
     guard !isAnalyzing else { return }
     beginUserInitiatedWork()
@@ -182,8 +259,57 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     analysisStage = "Starting analysis task"
 
     analysisTask = Task {
-      await analyze(image: image, settings: settings, customPrompt: customPrompt, forceOnline: forceOnline)
+      await analyze(
+        image: image,
+        settings: settings,
+        customPrompt: customPrompt,
+        forceOnline: forceOnline,
+        forceLocal: forceLocal
+      )
     }
+  }
+
+  func identifyCenterColor() {
+    runVisualUtility(
+      stage: "Identifying center color",
+      analyze: VisualUtilityAnalyzer.centerColor,
+      describe: \.spokenDescription
+    )
+  }
+
+  func measureLightLevel() {
+    runVisualUtility(
+      stage: "Measuring light level",
+      analyze: VisualUtilityAnalyzer.lightLevel,
+      describe: \.spokenDescription
+    )
+  }
+
+  private func runVisualUtility<Result>(
+    stage: String,
+    analyze: (UIImage) -> Result?,
+    describe: KeyPath<Result, String>
+  ) {
+    guard feature == .documentReader, !isAnalyzing else { return }
+    beginUserInitiatedWork()
+    analysisStage = stage
+    activeModelName = "On-device camera"
+    guard let sampleBuffer = latestSampleBuffer,
+          let image = camera.captureCurrentFrameImage(from: sampleBuffer),
+          let result = analyze(image) else {
+      let message = "Camera frame is not ready."
+      analysisStage = ""
+      errorMessage = message
+      speech.announce(message)
+      announceAccessibility(message)
+      return
+    }
+
+    let description = result[keyPath: describe]
+    transcript = description
+    analysisStage = ""
+    speech.announce(description)
+    announceAccessibility(description)
   }
 
   func toggleVoiceCommand(settings: AppSettings) {
@@ -213,8 +339,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
         self.isListeningForVoiceCommand = false
         self.voiceCommandText = command
         self.analysisStage = "Voice command: \(command)"
-        self.announceAccessibility("Command recognized. Analyzing scene.")
-        self.analyze(settings: settings, customPrompt: command)
+        self.pendingNavigationVoiceCommand = command
       },
       onError: { [weak self] error in
         guard let self else { return }
@@ -225,6 +350,161 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
         self.announceAccessibility(error.localizedDescription)
       }
     )
+  }
+
+  func clearPendingNavigationVoiceCommand() {
+    pendingNavigationVoiceCommand = nil
+  }
+
+  func toggleAssistantVoice(settings: AppSettings) {
+    guard feature == .assistant, !isAnalyzing else { return }
+    if isListeningForAssistant {
+      voiceCommands.finishListening()
+      return
+    }
+
+    guard isNetworkAvailable || voiceCommands.supportsOfflineRecognition else {
+      let message = "Speech recognition for \(Locale.current.localizedString(forIdentifier: Locale.current.identifier) ?? "the current language") requires an internet connection."
+      errorMessage = message
+      speech.announce(message)
+      announceAccessibility(message)
+      return
+    }
+
+    speech.stop()
+    errorMessage = nil
+    isListeningForAssistant = true
+    analysisStage = "Listening"
+    announceAccessibility("Listening for an Assistant message.")
+    voiceCommands.start(
+      onPartialResult: { [weak self] text in
+        self?.assistantDraft = text
+        self?.analysisStage = "Listening: \(text)"
+      },
+      onResult: { [weak self] text in
+        guard let self else { return }
+        self.isListeningForAssistant = false
+        self.assistantDraft = text
+        self.analysisStage = ""
+        self.sendAssistantMessage(settings: settings)
+      },
+      onError: { [weak self] error in
+        guard let self else { return }
+        self.isListeningForAssistant = false
+        self.analysisStage = ""
+        self.errorMessage = error.localizedDescription
+        self.speech.announce(error.localizedDescription)
+      }
+    )
+  }
+
+  var assistantVoiceInputStatus: String {
+    voiceCommands.supportsOfflineRecognition
+      ? "Voice input: On-device"
+      : "Voice input: Internet may be required"
+  }
+
+  func setAssistantModelMode(_ mode: AssistantModelMode) {
+    guard !isAnalyzing else { return }
+    assistantModelMode = mode
+    activeModelName = mode == .online ? settings?.cloudProvider.displayName : "On-device model"
+    errorMessage = nil
+  }
+
+  func captureAssistantCameraImage() {
+    guard let sampleBuffer = latestSampleBuffer,
+          let image = camera.captureCurrentFrameImage(from: sampleBuffer) else {
+      errorMessage = "Camera frame is not ready."
+      announceAccessibility("Camera frame is not ready.")
+      return
+    }
+    assistantAttachmentImage = image
+    assistantDocumentText = nil
+    assistantAttachmentName = "Camera image"
+    announceAccessibility("Camera image attached.")
+  }
+
+  func attachAssistantPhoto(data: Data, name: String = "Photo") {
+    guard let image = UIImage(data: data) else {
+      errorMessage = "The selected image could not be opened."
+      return
+    }
+    assistantAttachmentImage = image
+    assistantDocumentText = nil
+    assistantAttachmentName = name
+    announceAccessibility("\(name) attached.")
+  }
+
+  func attachAssistantFile(url: URL) {
+    let didStartAccessing = url.startAccessingSecurityScopedResource()
+    defer { if didStartAccessing { url.stopAccessingSecurityScopedResource() } }
+
+    do {
+      let type = UTType(filenameExtension: url.pathExtension.lowercased())
+      if type?.conforms(to: .image) == true {
+        attachAssistantPhoto(data: try Data(contentsOf: url), name: url.lastPathComponent)
+      } else if type?.conforms(to: .pdf) == true {
+        if let pages = documentTextExtractor.extractText(from: url) {
+          assistantDocumentText = String(pages.joined(separator: "\n\n").prefix(16_000))
+          assistantAttachmentImage = nil
+          assistantAttachmentName = url.lastPathComponent
+        } else if let firstPage = documentTextExtractor.renderPages(from: url, maxPages: 1).first {
+          assistantAttachmentImage = firstPage
+          assistantDocumentText = nil
+          assistantAttachmentName = "\(url.lastPathComponent), page 1"
+        } else {
+          throw CocoaError(.fileReadCorruptFile)
+        }
+      } else {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          throw CocoaError(.fileReadCorruptFile)
+        }
+        assistantDocumentText = String(text.prefix(16_000))
+        assistantAttachmentImage = nil
+        assistantAttachmentName = url.lastPathComponent
+      }
+      errorMessage = nil
+      announceAccessibility("\(assistantAttachmentName ?? "Document") attached.")
+    } catch {
+      errorMessage = "The selected file could not be opened."
+      announceAccessibility("The selected file could not be opened.")
+    }
+  }
+
+  func removeAssistantAttachment() {
+    assistantAttachmentName = nil
+    assistantAttachmentImage = nil
+    assistantDocumentText = nil
+  }
+
+  func newAssistantChat() {
+    analysisTask?.cancel()
+    localLLM.cancelGeneration()
+    voiceCommands.stop()
+    speech.stop()
+    isAnalyzing = false
+    isListeningForAssistant = false
+    assistantMessages = []
+    assistantDraft = ""
+    removeAssistantAttachment()
+    errorMessage = nil
+    analysisStage = ""
+    announceAccessibility("New Assistant chat.")
+  }
+
+  func sendAssistantMessage(settings: AppSettings) {
+    let message = assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !message.isEmpty, !isAnalyzing else { return }
+    beginUserInitiatedWork()
+    assistantDraft = ""
+    assistantMessages.append(.init(role: .user, text: message))
+    isAnalyzing = true
+    analysisStage = "Preparing response"
+
+    analysisTask = Task { [weak self] in
+      await self?.runAssistantTurn(settings: settings)
+    }
   }
 
   func stopCurrentAction() {
@@ -245,17 +525,136 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     analysisTask?.cancel()
     voiceCommands.stop()
     isListeningForVoiceCommand = false
+    pendingNavigationVoiceCommand = nil
+    isListeningForAssistant = false
     localLLM.cancelGeneration()
     startupAnnouncementTask?.cancel()
     speech.stop()
     announceAccessibility("Stopped.")
   }
 
+  private func runAssistantTurn(settings: AppSettings) async {
+    let responseID = UUID()
+    assistantMessages.append(.init(id: responseID, role: .assistant, text: ""))
+    defer {
+      isAnalyzing = false
+      analysisStage = ""
+      if let index = assistantMessages.firstIndex(where: { $0.id == responseID }),
+         assistantMessages[index].text.isEmpty {
+        assistantMessages.remove(at: index)
+      }
+    }
+
+    let prompt = assistantPrompt(excluding: responseID)
+    let canUseCloud = settings.isCloudConnected && settings.cloudConsentGranted
+
+    do {
+      let response: String
+      var responseWasSpokenWhileStreaming = false
+      if assistantModelMode == .online {
+        guard settings.isCloudConnected else { throw AssistantChatError.onlineProviderNotConnected }
+        guard isNetworkAvailable else { throw AssistantChatError.internetUnavailable }
+        response = try await runAssistantCloud(prompt: prompt, settings: settings)
+      } else {
+        do {
+          response = try await runAssistantLocal(prompt: prompt, responseID: responseID)
+          responseWasSpokenWhileStreaming = true
+          settings.recordSuccessfulLocalAnalysis()
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch {
+          if canUseCloud && settings.cloudUsageMode == .automaticFallback {
+            guard isNetworkAvailable else { throw AssistantChatError.internetUnavailable }
+            speech.stop()
+            response = try await runAssistantCloud(prompt: prompt, settings: settings)
+          } else {
+            throw error
+          }
+        }
+      }
+
+      try Task.checkCancellation()
+      if let index = assistantMessages.firstIndex(where: { $0.id == responseID }) {
+        assistantMessages[index].text = response
+      }
+      transcript = response
+      if !responseWasSpokenWhileStreaming {
+        speech.announce(String(response.prefix(1_500)))
+      }
+      announceAccessibility("Assistant response received.")
+      await speech.waitUntilFinished()
+    } catch is CancellationError {
+    } catch where Task.isCancelled {
+    } catch {
+      errorMessage = error.localizedDescription
+      speech.announce(error.localizedDescription)
+      announceAccessibility(error.localizedDescription)
+    }
+  }
+
+  private func runAssistantLocal(prompt: String, responseID: UUID) async throws -> String {
+    guard localLLM.isReady else { throw LocalLLMError.modelNotLoaded }
+    activeModelName = "On-device model"
+    analysisStage = "Generating on device"
+    let stream = try await localLLM.generate(prompt: prompt, image: assistantAttachmentImage)
+    var response = ""
+    let chunker = StreamingSentenceChunker()
+    for try await token in stream {
+      try Task.checkCancellation()
+      response += token
+      if let index = assistantMessages.firstIndex(where: { $0.id == responseID }) {
+        assistantMessages[index].text = response
+      }
+      for sentence in chunker.onToken(token) {
+        speech.queue(sentence)
+      }
+    }
+    for sentence in chunker.onDone() {
+      speech.queue(sentence)
+    }
+    let clean = response.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !clean.isEmpty else { throw LocalLLMError.emptyResponse }
+    return clean
+  }
+
+  private func runAssistantCloud(prompt: String, settings: AppSettings) async throws -> String {
+    guard settings.isCloudConnected else { throw CloudVisionError.invalidKey }
+    guard isNetworkAvailable else { throw AssistantChatError.internetUnavailable }
+    activeModelName = settings.cloudProvider.displayName
+    analysisStage = "Generating online"
+    return try await CloudVisionClient(
+      provider: settings.cloudProvider,
+      apiKey: settings.cloudAPIKey
+    ).generate(prompt: prompt, image: assistantAttachmentImage)
+  }
+
+  private func assistantPrompt(excluding responseID: UUID) -> String {
+    let history = assistantMessages
+      .filter { $0.id != responseID && !$0.text.isEmpty }
+      .suffix(12)
+      .map { "\($0.role == .user ? "User" : "Assistant"): \($0.text)" }
+      .joined(separator: "\n\n")
+    let documentContext = assistantDocumentText.map {
+      "\n\n<ATTACHED_DOCUMENT>\n\($0)\n</ATTACHED_DOCUMENT>"
+    } ?? ""
+    let imageContext = assistantAttachmentImage == nil ? "" :
+      "\nAn image is attached. Use it when answering relevant questions."
+    return """
+    You are EchoSense Assistant, a concise, helpful assistant designed to work well with screen readers. Answer the user's latest request while using the conversation history and any attachment. Clearly state uncertainty. Do not claim that visual or document analysis is perfectly reliable. Use plain text and complete sentences.
+    \(imageContext)\(documentContext)
+
+    <CONVERSATION>
+    \(history)
+    </CONVERSATION>
+    """
+  }
+
   func analyze(
     image: UIImage,
     settings: AppSettings,
     customPrompt: String? = nil,
-    forceOnline: Bool = false
+    forceOnline: Bool = false,
+    forceLocal: Bool = false
   ) async {
     Self.logger.notice("Analysis task entered for feature: \(self.feature.rawValue, privacy: .public)")
     suspendSafetyAnnouncementsForAnalysis()
@@ -270,6 +669,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
 
     do {
       switch feature {
+      case .assistant:
+        return
       case .documentReader:
         try Task.checkCancellation()
         activeModelName = "Vision OCR"
@@ -310,6 +711,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
           image: image,
           settings: settings,
           forceOnline: forceOnline,
+          forceLocal: forceLocal,
           fallbackSpeech: "Unable to identify currency."
         )
 
@@ -324,6 +726,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
           image: image,
           settings: settings,
           forceOnline: forceOnline,
+          forceLocal: forceLocal,
           fallbackSpeech: "Unable to analyze scene."
         )
       }
@@ -387,7 +790,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
           speech.announce("Text recognized. Offline translation is not available yet.")
           announceAccessibility("Text recognized. Offline translation is not available yet.")
         }
-      case .navigation, .currency:
+      case .assistant, .navigation, .currency:
         break
       }
     } catch is CancellationError {
@@ -526,12 +929,24 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     image: UIImage,
     settings: AppSettings,
     forceOnline: Bool,
+    forceLocal: Bool,
     fallbackSpeech: String
   ) async throws {
     let canUseCloud = settings.isCloudConnected && settings.cloudConsentGranted
-    if forceOnline || (canUseCloud && settings.cloudUsageMode == .preferOnline) {
-      try await runCloudAnalysis(prompt: prompt, image: image, settings: settings)
-      return
+    if !forceLocal && (forceOnline || (canUseCloud && settings.cloudUsageMode == .preferOnline)) {
+      do {
+        try await runCloudAnalysis(prompt: prompt, image: image, settings: settings)
+        return
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        analysisStage = "Online analysis unavailable. Using on-device model"
+        try await runLocalLLM(prompt: prompt, image: image, fallbackSpeech: fallbackSpeech)
+        await speech.waitUntilFinished()
+        try Task.checkCancellation()
+        settings.recordSuccessfulLocalAnalysis()
+        return
+      }
     }
 
     do {
@@ -596,13 +1011,18 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private func announceStartupStatus() {
     guard isActive else { return }
     guard !hasAnnouncedStartupStatus else { return }
+    guard feature.usesLocalLLM else { return }
     hasAnnouncedStartupStatus = true
-    if isModelReady {
+    if localLLM.isReady {
       speech.announce("Ready.")
       announceAccessibility("Ready.")
+    } else if hasStagedLocalModel {
+      speech.queue("On-device model loading. Wait for ready.")
+      announceAccessibility("On-device model loading. Wait for ready.")
     } else {
-      speech.queue("Model loading. Wait for ready.")
-      announceAccessibility("Model loading. Wait for ready.")
+      let message = "Download an on-device model in Settings to enable offline analysis."
+      speech.queue(message)
+      announceAccessibility(message)
     }
   }
 
@@ -658,12 +1078,24 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     isModelReady = modelReady(for: feature)
     activeModelName = modelURL.lastPathComponent
     transcript = "Local model ready."
+    hasAnnouncedStartupStatus = true
     speech.announce("Ready.")
     announceAccessibility("Model ready.")
   }
 
+  var modelStatusText: String {
+    if isAnalyzing { return "Analyzing" }
+    if feature.usesLocalLLM {
+      if localLLM.isReady { return "Ready" }
+      return hasStagedLocalModel ? "Model loading" : "On-device model not downloaded"
+    }
+    return isModelReady ? "Ready" : "Preparing"
+  }
+
   private func modelReady(for feature: EchoSenseFeature) -> Bool {
     switch feature {
+    case .assistant:
+      return localLLM.isReady
     case .navigation:
       return localLLM.isReady || objectDetector.isAvailable
     case .currency:

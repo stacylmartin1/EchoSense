@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
@@ -59,7 +59,8 @@ class CurrencyModeTask @Inject constructor() : CustomTask {
         LaunchedEffect(curDownloadStatus, selectedModel.name) {
             if (curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
                 val modelInitStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-                if (modelInitStatus?.status != ModelInitializationStatusType.INITIALIZED) {
+                if (selectedModel.instance == null ||
+                    modelInitStatus?.status != ModelInitializationStatusType.INITIALIZED) {
                     modelManagerViewModel.initializeModel(context = context, task = task, model = selectedModel)
                 }
             }

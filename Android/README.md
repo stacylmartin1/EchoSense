@@ -6,10 +6,12 @@ The Android application began as a customization of the open-source Google AI Ed
 
 ## Features
 
+- **Assistant** provides multi-turn text or voice chat and can analyze a camera photo, stored image, PDF, or text document.
 - **Navigate** describes the current scene and accepts optional voice commands such as “help me find my keys.”
 - **Safety** combines object detection with ARCore metric depth and vertical-plane checks when supported, then falls back to camera-relative proximity estimates.
 - **Currency** identifies visible bank notes.
-- **Read** extracts document text from the camera or an imported file and reads it aloud.
+- **Read** extracts document text from the camera or an imported file, reads it aloud,
+  identifies the approximate center color, and reports the camera-relative light level.
 - **Translate** extracts document text and translates it to English.
 - **On-device analysis** uses a downloaded Gemma multimodal model without sending camera images to an AI provider.
 - **Optional online analysis** supports user-provided Gemini or OpenAI API keys and configurable ask, fallback, or prefer-online behavior.
@@ -46,6 +48,21 @@ Open `Android/src` in Android Studio to run the `app` configuration on a connect
 ./gradlew installDebug
 ```
 
+`Android/src` is the Gradle project root. Do not open the outer `Android` directory as an
+Android Studio project; it contains documentation but no Gradle settings file. Select the
+checked-in **EchoSense** run configuration after opening `Android/src`.
+
+The installed Android application ID is `com.terranet.echosense.android`. Builds that used the
+legacy Google package ID are treated by Android as a different app; uninstall
+`com.google.aiedge.gallery` once before installing this version. Its private settings and downloaded
+models do not migrate automatically, so the model must be downloaded or imported again.
+
+If Android Studio tries to launch
+`com.google.aiedge.gallery/com.google.ai.edge.gallery.MainActivity`, it is using a stale Gradle
+deployment model. Choose **File → Sync Project with Gradle Files**, select the **EchoSense** run
+configuration, and run again. The correct component is
+`com.terranet.echosense.android/com.google.ai.edge.gallery.MainActivity`.
+
 Run local unit tests with:
 
 ```bash
@@ -79,7 +96,7 @@ The API key is encrypted with a non-exportable key in Android Keystore. Keys mus
 EchoSense requests only the capabilities needed by its enabled features:
 
 - Camera for scene, document, and currency capture
-- Microphone for optional navigation voice commands
+- Microphone for optional navigation voice commands and Assistant voice messages
 - Internet and network state for model downloads and optional online analysis
 - Notifications and foreground data service access for long-running model downloads
 - Wake lock so a verified model download can finish reliably
@@ -90,8 +107,8 @@ EchoSense requests only the capabilities needed by its enabled features:
 Android/src/
 ├── app/src/main/java/com/google/ai/edge/gallery/
 │   ├── data/                         Model catalog and persistence
-│   ├── ui/echosense/                 EchoSense tasks and shared behavior
-│   ├── ui/home/                      Home screen, settings, and credentials
+│   ├── ui/echosense/                 Main screen, tasks, and shared behavior
+│   ├── ui/home/                      Settings and online credentials
 │   └── worker/                       Background model download worker
 ├── app/src/main/assets/              Small bundled inference assets
 ├── app/src/test/                     Local unit tests
@@ -99,7 +116,7 @@ Android/src/
 └── settings.gradle.kts               EchoSense Gradle project definition
 ```
 
-Some internal namespaces still use `com.google.ai.edge.gallery` for compatibility with the original codebase. The installed application label and Gradle root project are EchoSense.
+Some internal source namespaces still use `com.google.ai.edge.gallery` for compatibility with the original codebase. The installed application ID is `com.terranet.echosense.android`; these internal namespaces are not exposed as the app's device identity.
 
 ## Privacy and model licensing
 

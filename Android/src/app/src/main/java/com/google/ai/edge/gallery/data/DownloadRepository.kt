@@ -28,7 +28,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
-import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.work.Data
 import androidx.work.Constraints
@@ -215,8 +214,6 @@ class DefaultDownloadRepository(
             sendNotification(
               title = context.getString(R.string.notification_title_success),
               text = context.getString(R.string.notification_content_success).format(model.name),
-              taskId = task.id,
-              modelName = model.name,
             )
 
             val startTime = downloadStartTimeSharedPreferences.getLong(model.name, 0L)
@@ -246,8 +243,6 @@ class DefaultDownloadRepository(
               sendNotification(
                 title = context.getString(R.string.notification_title_fail),
                 text = context.getString(R.string.notification_content_success).format(model.name),
-                taskId = "",
-                modelName = "",
               )
             }
             onStatusUpdated(
@@ -275,14 +270,14 @@ class DefaultDownloadRepository(
     }
   }
 
-  private fun sendNotification(title: String, text: String, taskId: String, modelName: String) {
+  private fun sendNotification(title: String, text: String) {
     // Don't send notification if app is in foreground.
     if (lifecycleProvider.isAppInForeground) {
       return
     }
 
     val channelId = "download_notification"
-    val channelName = "AI Edge Gallery download notification"
+    val channelName = "EchoSense model downloads"
 
     // Create the NotificationChannel, but only on API 26+ because
     // the NotificationChannel class is new and not in the support library
@@ -292,19 +287,8 @@ class DefaultDownloadRepository(
       context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     notificationManager.createNotificationChannel(channel)
 
-    val intent: Intent
-    if (taskId.isEmpty()) {
-      // If taskId is empty, it's a failed download. Just open the app's main screen.
-      intent = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
-    } else {
-      // Otherwise, create the deep link as before.
-      intent =
-        Intent(
-            Intent.ACTION_VIEW,
-            "com.google.ai.edge.gallery://model/$taskId/${modelName}".toUri(),
-          )
-          .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
-    }
+    // Model management now lives in Settings, so download notifications open EchoSense directly.
+    val intent: Intent = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
 
     // Create a PendingIntent
     val pendingIntent: PendingIntent =

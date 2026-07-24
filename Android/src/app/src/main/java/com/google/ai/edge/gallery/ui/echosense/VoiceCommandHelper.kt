@@ -47,6 +47,11 @@ class VoiceCommandHelper(
         speechRecognizer.stopListening()
     }
 
+    fun destroy() {
+        speechRecognizer.cancel()
+        speechRecognizer.destroy()
+    }
+
     override fun onReadyForSpeech(params: Bundle?) {}
 
     override fun onBeginningOfSpeech() {}
