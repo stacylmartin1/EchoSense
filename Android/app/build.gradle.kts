@@ -1,5 +1,6 @@
 /*
  * Copyright 2025 Google LLC
+ * Modifications Copyright 2026 TerraNet Technologies LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +27,7 @@ plugins {
 }
 
 android {
-  namespace = "com.google.ai.edge.gallery"
+  namespace = "com.terranet.echosense.android"
   compileSdk = 35
 
   defaultConfig {
@@ -38,7 +39,7 @@ android {
     ndk {
       abiFilters.add("arm64-v8a")
     }
-    manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.EchoSenseApplication"
+    manifestPlaceholders["applicationName"] = "com.terranet.echosense.android.EchoSenseApplication"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

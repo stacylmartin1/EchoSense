@@ -73,8 +73,11 @@ permissions, and troubleshooting.
 The Android application began as a customization of the open-source
 [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery) project and
 retains portions of its model-management and LiteRT-LM integration. Inherited
-source files retain their original notices.
+source files retain their original notices, and modified inherited files include a
+TerraNet Technologies LLC modification notice. Original EchoSense source carries
+the TerraNet notice.
 
 Source code is licensed under the Apache License 2.0 unless a file states otherwise.
 Downloaded models and third-party components remain subject to their own licenses.
-See [LICENSE](LICENSE) and the license information shown in the apps.
+See [LICENSE](LICENSE), [NOTICE](NOTICE), and the license information shown in the
+apps.

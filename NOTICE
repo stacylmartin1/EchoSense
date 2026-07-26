@@ -1,0 +1,20 @@
+EchoSense
+Copyright 2025-2026 TerraNet Technologies LLC
+
+This product includes software derived from Google AI Edge Gallery:
+
+Copyright 2025 Google LLC
+
+The EchoSense source code is licensed under the Apache License, Version 2.0.
+A copy of that license is included in the LICENSE file.
+
+Source files retained unchanged from Google carry the original Google notice.
+Google-derived files modified for EchoSense carry both the original Google
+notice and a TerraNet Technologies LLC modification notice. Original EchoSense
+files carry a TerraNet Technologies LLC notice.
+
+This NOTICE also covers application-owned design assets and metadata formats
+that cannot safely contain comments, including image assets, asset-catalog JSON,
+and IDE project metadata. It does not replace or alter the separate licenses
+for downloaded models, fonts, machine-learning task files, OCR language data,
+or other third-party dependencies distributed with or used by the applications.

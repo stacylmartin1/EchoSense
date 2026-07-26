@@ -1,0 +1,51 @@
+/*
+ * Copyright 2026 TerraNet Technologies LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.terranet.echosense.android.ui.echosense
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class SpeechTextSanitizerTest {
+  @Test
+  fun removesMarkdownFormattingWhileKeepingWords() {
+    val input = """
+      ## What I found
+      - **Keys:** Try the *table*.
+      - See [the guide](https://example.com).
+    """.trimIndent()
+
+    assertEquals(
+      "What I found. Keys: Try the table. See the guide.",
+      SpeechTextSanitizer.sanitize(input),
+    )
+  }
+
+  @Test
+  fun keepsHyphensInsideWords() {
+    assertEquals(
+      "Use the on-device model.",
+      SpeechTextSanitizer.sanitize("Use the on-device model."),
+    )
+  }
+
+  @Test
+  fun removesCodeAndTablePunctuation() {
+    val input = "```kotlin\nval answer = 4\n```\nName | Value"
+
+    assertEquals("val answer = 4. Name , Value", SpeechTextSanitizer.sanitize(input))
+  }
+}

@@ -7,14 +7,13 @@ directly into the Navigate function and provides Assistant, Navigate/Safety, Cur
 Translate functions from a horizontally scrolling bottom function bar.
 
 The app began as a fork of Google AI Edge Gallery. Shared model-management and LiteRT-LM runtime
-code remains under the original `com.google.ai.edge.gallery` package for source and migration
-compatibility, but the old Gallery home, model-list, model-detail, benchmark, and generic chat pages
-have been removed.
+code has been retained where it is still used, while the old Gallery home, model-list,
+model-detail, benchmark, and generic chat pages have been removed. All active application source
+now uses the `com.terranet.echosense.android` namespace.
 
-The installed application ID is `com.terranet.echosense.android`. Do not reintroduce
-`com.google.aiedge.gallery` in Gradle configuration, manifest authorities, intents, or runtime
-lookups. The similarly named `com.google.ai.edge.gallery` Kotlin namespace is internal source
-organization only.
+The Kotlin namespace and installed application ID are both
+`com.terranet.echosense.android`. Do not reintroduce the legacy Gallery application ID in Gradle
+configuration, manifest authorities, intents, or runtime lookups.
 
 Large language models are not bundled. Users download Gemma 4 E2B or E4B from public pinned model
 URLs or import a compatible `.litertlm` file from Settings.
@@ -46,8 +45,7 @@ The app targets Android 12 / API 31 or newer and is built for `arm64-v8a`.
 - `CustomTask` implementations are registered through Hilt `@IntoSet` bindings.
 - `EchoSenseBaseViewModel` provides the shared camera, local/cloud inference, cancellation, and TTS
   pipeline for the specialized visual functions.
-- `LlmChatModelHelper` is the shared LiteRT-LM engine/conversation adapter. Despite its inherited
-  package name, it is active runtime code and must not be removed.
+- `LlmChatModelHelper` is the shared LiteRT-LM engine/conversation adapter and must not be removed.
 - `AppSettings` stores the current in-memory settings and persists them through `DataStoreRepository`.
 
 ## EchoSense functions

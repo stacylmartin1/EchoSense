@@ -59,11 +59,11 @@ legacy Google package ID are treated by Android as a different app; uninstall
 `com.google.aiedge.gallery` once before installing this version. Its private settings and downloaded
 models do not migrate automatically, so the model must be downloaded or imported again.
 
-If Android Studio tries to launch
-`com.google.aiedge.gallery/com.google.ai.edge.gallery.MainActivity`, it is using a stale Gradle
-deployment model. Choose **File → Sync Project with Gradle Files**, select the **EchoSense** run
-configuration, and run again. The correct component is
-`com.terranet.echosense.android/com.google.ai.edge.gallery.MainActivity`.
+If Android Studio tries to launch the legacy Gallery application ID or opens the deleted
+`Android/src` project root, it is using a stale deployment model. Open `Android`, choose
+**File → Sync Project with Gradle Files**, select the **EchoSense** run configuration, and run
+again. The correct component is
+`com.terranet.echosense.android/com.terranet.echosense.android.MainActivity`.
 
 Run local unit tests with:
 
@@ -107,7 +107,7 @@ EchoSense requests only the capabilities needed by its enabled features:
 
 ```text
 Android/
-├── app/src/main/java/com/google/ai/edge/gallery/
+├── app/src/main/java/com/terranet/echosense/android/
 │   ├── data/                         Model catalog and persistence
 │   ├── ui/echosense/                 Main screen, tasks, and shared behavior
 │   ├── ui/home/                      Settings and online credentials
@@ -118,7 +118,9 @@ Android/
 └── settings.gradle.kts               EchoSense Gradle project definition
 ```
 
-Some internal source namespaces still use `com.google.ai.edge.gallery` for compatibility with the original codebase. The installed application ID is `com.terranet.echosense.android`; these internal namespaces are not exposed as the app's device identity.
+The Kotlin namespace and installed application ID both use
+`com.terranet.echosense.android`. Keeping them aligned avoids ambiguity in generated classes,
+manifest components, logs, and Android Studio run configurations.
 
 ## Privacy and model licensing
 
