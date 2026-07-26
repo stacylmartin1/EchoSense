@@ -12,10 +12,10 @@ The Android application began as a customization of the open-source Google AI Ed
 - **Currency** identifies visible bank notes.
 - **Read** extracts document text from the camera or an imported file, reads it aloud,
   and offers Guided Scan with spoken page-edge guidance, automatic stable-page capture,
-  perspective correction, image enhancement, and a manual capture fallback.
-  identifies the approximate center color, reports the camera-relative light level, and
-  scans common barcodes and QR codes entirely on-device. Its accessible Magnifier provides
-  zoom, freeze, flashlight, contrast, inversion, and grayscale controls.
+  perspective correction, image enhancement, and a manual capture fallback. It also
+  identifies the approximate center color, reports camera-relative light level, and
+  scans common barcodes and QR codes entirely on-device. Its accessible Magnifier
+  provides zoom, freeze, flashlight, contrast, inversion, and grayscale controls.
 - **Translate** extracts document text and translates it to English.
 - **On-device analysis** uses a downloaded Gemma multimodal model without sending camera images to an AI provider.
 - **Optional online analysis** supports user-provided Gemini or OpenAI API keys and configurable ask, fallback, or prefer-online behavior.
@@ -39,22 +39,20 @@ When Navigation submits an image for local or online analysis, it also attaches 
 
 ## Build and run
 
-The Gradle project is in `Android/src`:
+The `Android` directory is the Gradle project root:
 
 ```bash
-cd Android/src
+cd Android
 ./gradlew assembleDebug
 ```
 
-Open `Android/src` in Android Studio to run the `app` configuration on a connected device, or install from the command line:
+Open `Android` in Android Studio to run the `app` configuration on a connected device, or install from the command line:
 
 ```bash
 ./gradlew installDebug
 ```
 
-`Android/src` is the Gradle project root. Do not open the outer `Android` directory as an
-Android Studio project; it contains documentation but no Gradle settings file. Select the
-checked-in **EchoSense** run configuration after opening `Android/src`.
+Select the checked-in **EchoSense** run configuration after opening the project.
 
 The installed Android application ID is `com.terranet.echosense.android`. Builds that used the
 legacy Google package ID are treated by Android as a different app; uninstall
@@ -73,7 +71,7 @@ Run local unit tests with:
 ./gradlew testDebugUnitTest
 ```
 
-The debug APK is written beneath `Android/src/app/build/outputs/apk/debug/`.
+The debug APK is written beneath `Android/app/build/outputs/apk/debug/`.
 
 ## On-device model setup
 
@@ -108,7 +106,7 @@ EchoSense requests only the capabilities needed by its enabled features:
 ## Project layout
 
 ```text
-Android/src/
+Android/
 ├── app/src/main/java/com/google/ai/edge/gallery/
 │   ├── data/                         Model catalog and persistence
 │   ├── ui/echosense/                 Main screen, tasks, and shared behavior
@@ -134,4 +132,7 @@ Downloaded models remain subject to the license linked by the model catalog. Ech
 - Keep Google Play services, Android System WebView, and device firmware current.
 - Disable battery restrictions for EchoSense if the operating system repeatedly suspends background downloads.
 - Use the debug overlay and Logcat when diagnosing initialization, download verification, inference, or TTS problems.
+- Filter Logcat by `tag:EchoSensePerf` to compare model initialization, time to first
+  output, streaming rate, memory pressure, power-saver state, and Android thermal status
+  across devices or model choices.
 - Local multimodal generation is memory intensive. Test cancellation and restart behavior on physical devices, not only in an emulator.

@@ -1,8 +1,15 @@
-# **The Complete Guide to Capturing AI Edge Gallery Bug Reports for ANDROID devices**
+# Capturing EchoSense Bug Reports on Android
 
-Thank you for helping us improve the AI Edge Gallery app\! To find and fix bugs effectively, our engineers need detailed diagnostic information from your device. A **Full Bug Report** is the best way to provide this.
+Thank you for helping improve EchoSense. Detailed diagnostic information makes
+device-specific camera, model, speech, and graphics problems much easier to
+investigate. A **Full Bug Report** is the best way to provide it.
 
-Please note that this guide is specifically for capturing bug reports on **Android devices**.
+> **Privacy warning:** A full Android bug report can contain device identifiers,
+> installed-app information, logs, notification text, and other sensitive data.
+> Review it before sharing, remove anything you do not want to disclose, and use a
+> private support channel when possible. Never post API keys or other credentials.
+
+This guide applies specifically to **Android devices**.
 
 This guide covers the simple on-device method for all users and the more advanced `adb` method for developers.
 
