@@ -23,6 +23,7 @@ struct FeatureSessionView: View {
   @State private var magnifierInverted = false
   @State private var magnifierGrayscale = false
   @State private var magnifierTorchEnabled = false
+  @State private var showingInstantTextLanguages = false
 
   var body: some View {
     ZStack {
@@ -133,6 +134,20 @@ struct FeatureSessionView: View {
           ? "The current image and prompt will be sent to \(settings.cloudProvider.displayName). Provider charges may apply. Use on-device to keep them on this device."
           : "Your voice request and current image will be sent to \(settings.cloudProvider.displayName). Provider charges may apply. Use on-device to keep them on this device."
       )
+    }
+    .confirmationDialog(
+      "Instant Text Language",
+      isPresented: $showingInstantTextLanguages,
+      titleVisibility: .visible
+    ) {
+      ForEach(OCRLanguageOption.allCases) { language in
+        Button(language.title) {
+          viewModel.setInstantTextLanguage(language)
+        }
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Automatic detects the script. Choosing a language can reduce false matches and improve recognition.")
     }
     .confirmationDialog(
       "Use \(settings.cloudProvider.displayName) for chat?",
@@ -476,6 +491,14 @@ struct FeatureSessionView: View {
         Text(viewModel.analysisStage)
           .foregroundStyle(.secondary)
       }
+      if !viewModel.instantTextStatus.isEmpty {
+        Text(viewModel.instantTextStatus)
+          .foregroundStyle(.secondary)
+      }
+      if !viewModel.guidedDocumentStatus.isEmpty {
+        Text(viewModel.guidedDocumentStatus)
+          .foregroundStyle(.secondary)
+      }
       if !viewModel.voiceCommandText.isEmpty {
         Text("Command: \(viewModel.voiceCommandText)")
       }
@@ -577,6 +600,15 @@ struct FeatureSessionView: View {
           voiceCommandButton
         }
         if viewModel.feature == .documentReader {
+          guidedDocumentButton
+          if viewModel.guidedDocumentEnabled {
+            guidedDocumentManualCaptureButton
+          }
+          instantTextButton
+          instantTextLanguageButton
+          if viewModel.instantTextEnabled {
+            instantTextPauseButton
+          }
           colorButton
           lightButton
           codeButton
@@ -612,7 +644,7 @@ struct FeatureSessionView: View {
       )
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing)
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled)
     .accessibilityLabel("Voice command")
     .accessibilityValue(viewModel.isListeningForVoiceCommand ? "Listening" : "Not listening")
     .accessibilityHint(viewModel.isListeningForVoiceCommand ? "Stops listening." : "Listens for a custom navigation request and analyzes the current scene.")
@@ -629,9 +661,94 @@ struct FeatureSessionView: View {
       )
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing || viewModel.isListeningForVoiceCommand)
+    .disabled(
+      viewModel.isAnalyzing || viewModel.isListeningForVoiceCommand ||
+        viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled
+    )
     .accessibilityLabel(viewModel.feature.defaultActionTitle)
     .accessibilityHint("Captures the current camera frame. When online analysis is available, asks before sending; otherwise uses the on-device model.")
+  }
+
+  private var instantTextButton: some View {
+    Button {
+      viewModel.toggleInstantText()
+    } label: {
+      iconLabel(
+        systemName: viewModel.instantTextEnabled ? "text.viewfinder" : "text.magnifyingglass",
+        title: viewModel.instantTextEnabled ? "Instant On" : "Instant",
+        accent: viewModel.instantTextEnabled ? .green : nil
+      )
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing || viewModel.guidedDocumentEnabled)
+    .accessibilityLabel(viewModel.instantTextEnabled ? "Turn off Instant Text" : "Turn on Instant Text")
+    .accessibilityValue(viewModel.instantTextEnabled ? "On" : "Off")
+    .accessibilityHint("Continuously recognizes stable text in the camera view and reads new text aloud.")
+  }
+
+  private var guidedDocumentButton: some View {
+    Button {
+      viewModel.toggleGuidedDocumentCapture()
+    } label: {
+      iconLabel(
+        systemName: "doc.viewfinder",
+        title: viewModel.guidedDocumentEnabled ? "Scan On" : "Scan",
+        accent: viewModel.guidedDocumentEnabled ? .green : nil
+      )
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled)
+    .accessibilityLabel(
+      viewModel.guidedDocumentEnabled ? "Turn off Guided Scan" : "Turn on Guided Scan"
+    )
+    .accessibilityValue(viewModel.guidedDocumentEnabled ? "On" : "Off")
+    .accessibilityHint(
+      "Guides the camera around one complete page and captures automatically when the page is stable."
+    )
+  }
+
+  private var guidedDocumentManualCaptureButton: some View {
+    Button {
+      viewModel.captureGuidedDocumentManually()
+    } label: {
+      iconLabel(systemName: "camera.fill", title: "Capture")
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.isAnalyzing)
+    .accessibilityLabel("Capture document now")
+    .accessibilityHint(
+      "Captures immediately when automatic page-edge detection cannot recognize the document."
+    )
+  }
+
+  private var instantTextPauseButton: some View {
+    Button {
+      viewModel.toggleInstantTextPause()
+    } label: {
+      iconLabel(
+        systemName: viewModel.instantTextPaused ? "play.fill" : "pause.fill",
+        title: viewModel.instantTextPaused ? "Resume" : "Pause"
+      )
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .accessibilityLabel(viewModel.instantTextPaused ? "Resume Instant Text" : "Pause Instant Text")
+    .accessibilityHint(
+      viewModel.instantTextPaused
+        ? "Resumes continuous text recognition."
+        : "Keeps the current recognized text on screen and pauses recognition."
+    )
+  }
+
+  private var instantTextLanguageButton: some View {
+    Button {
+      showingInstantTextLanguages = true
+    } label: {
+      iconLabel(systemName: "character.book.closed.fill", title: "Language")
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .accessibilityLabel("Text recognition language")
+    .accessibilityValue(viewModel.instantTextLanguage.title)
+    .accessibilityHint("Choose automatic detection or a preferred recognition language.")
   }
 
   private func requestPreferredAnalysis(customPrompt: String? = nil) {
@@ -675,7 +792,7 @@ struct FeatureSessionView: View {
       iconLabel(systemName: "paintpalette.fill", title: "Color")
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing)
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled)
     .accessibilityLabel("Identify center color")
     .accessibilityHint("Speaks the approximate color at the center of the camera view. Lighting can affect the result.")
   }
@@ -687,7 +804,7 @@ struct FeatureSessionView: View {
       iconLabel(systemName: "sun.max.fill", title: "Light")
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing)
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled)
     .accessibilityLabel("Measure light level")
     .accessibilityHint("Speaks the approximate brightness seen by the camera. This is not a calibrated lux measurement.")
   }
@@ -699,7 +816,7 @@ struct FeatureSessionView: View {
       iconLabel(systemName: "barcode.viewfinder", title: "Codes")
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing)
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled)
     .accessibilityLabel("Scan barcode or QR code")
     .accessibilityHint("Scans the current camera view. Links are reported but never opened automatically.")
   }
@@ -717,7 +834,7 @@ struct FeatureSessionView: View {
       iconLabel(systemName: "plus.magnifyingglass", title: "Magnify")
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing)
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled)
     .accessibilityLabel("Open Magnifier")
     .accessibilityHint("Opens a full-screen magnifier with zoom, freeze, contrast, inversion, grayscale, and flashlight controls.")
   }
@@ -753,7 +870,7 @@ struct FeatureSessionView: View {
       iconLabel(systemName: "doc.badge.plus", title: "Upload")
     }
     .buttonStyle(IconCaptionButtonStyle())
-    .disabled(viewModel.isAnalyzing)
+    .disabled(viewModel.isAnalyzing || viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled)
     .accessibilityLabel("Upload document")
     .accessibilityHint("Opens the file picker for PDF, image, or text documents.")
     .fileImporter(

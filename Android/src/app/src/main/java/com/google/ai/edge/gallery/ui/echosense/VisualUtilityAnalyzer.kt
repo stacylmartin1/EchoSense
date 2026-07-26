@@ -77,11 +77,20 @@ object VisualUtilityAnalyzer {
     }
 
     fun codeCaptureGuidance(bitmap: Bitmap): String {
-        if (bitmap.width <= 0 || bitmap.height <= 0) return CODE_GUIDANCE
+        return when (textCaptureIssue(bitmap)) {
+            null -> CODE_GUIDANCE
+            "Possible glare detected. Tilt the page away from the light or shade it." ->
+                "Possible glare detected. Tilt the code away from the light or shade it."
+            else -> "The code appears out of focus. Move the phone farther away and hold it steady."
+        }
+    }
+
+    fun textCaptureIssue(bitmap: Bitmap): String? {
+        if (bitmap.width <= 0 || bitmap.height <= 0) return null
         val side = 48
         val samples = sampleGrid(bitmap, side)
         val luminances = samples.map(::relativeLuminance)
-        if (luminances.size != side * side) return CODE_GUIDANCE
+        if (luminances.size != side * side) return null
         val median = luminances.sorted()[luminances.size / 2]
 
         var maximumBlockMean = 0.0
@@ -100,7 +109,7 @@ object VisualUtilityAnalyzer {
             }
         }
         if (maximumBlockMean > 0.94 && maximumBlockMean - median > 0.14) {
-            return "Possible glare or overexposure detected. Tilt the code away from the light, shade it, and try again."
+            return "Possible glare detected. Tilt the page away from the light or shade it."
         }
 
         var edgeTotal = 0.0
@@ -119,9 +128,9 @@ object VisualUtilityAnalyzer {
             }
         }
         if (edgeTotal / max(1, edgeCount) < 0.028) {
-            return "The image appears out of focus. Move the phone farther away first, hold it steady, and try again."
+            return "Text appears out of focus. Move the phone farther away and hold it steady."
         }
-        return CODE_GUIDANCE
+        return null
     }
 
     private fun averageRgb(

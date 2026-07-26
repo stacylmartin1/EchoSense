@@ -75,11 +75,22 @@ enum VisualUtilityAnalyzer {
   }
 
   static func codeCaptureGuidance(in image: UIImage) -> String {
+    switch textCaptureIssue(in: image) {
+    case let issue? where issue.hasPrefix("Possible glare"):
+      "Possible glare detected. Tilt the code away from the light or shade it."
+    case let issue? where issue.hasPrefix("Text appears out of focus"):
+      "The code appears out of focus. Move the phone farther away and hold it steady."
+    default:
+      genericCodeGuidance
+    }
+  }
+
+  static func textCaptureIssue(in image: UIImage) -> String? {
     guard let input = CIImage(image: image) else {
-      return genericCodeGuidance
+      return nil
     }
     let samples = sampledRGBAs(of: input, in: input.extent, side: 48)
-    guard samples.count == 48 * 48 else { return genericCodeGuidance }
+    guard samples.count == 48 * 48 else { return nil }
     let luminances = samples.map(relativeLuminance)
     let sorted = luminances.sorted()
     let median = sorted[sorted.count / 2]
@@ -99,7 +110,7 @@ enum VisualUtilityAnalyzer {
     }
 
     if maximumBlockMean > 0.94, maximumBlockMean - median > 0.14 {
-      return "Possible glare or overexposure detected. Tilt the code away from the light, shade it, and try again."
+      return "Possible glare detected. Tilt the page away from the light or shade it."
     }
 
     var edgeTotal = 0.0
@@ -118,9 +129,9 @@ enum VisualUtilityAnalyzer {
       }
     }
     if edgeTotal / Double(max(1, edgeCount)) < 0.028 {
-      return "The image appears out of focus. Move the phone farther away first, hold it steady, and try again."
+      return "Text appears out of focus. Move the phone farther away and hold it steady."
     }
-    return genericCodeGuidance
+    return nil
   }
 
   private static let genericCodeGuidance =

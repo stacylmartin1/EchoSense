@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -28,15 +30,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -64,7 +73,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.ui.home.AppSettings
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseActionButton
+import com.google.ai.edge.gallery.ui.echosense.OcrScriptPreference
 import kotlinx.coroutines.delay
+import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,8 +87,20 @@ fun DocumentReaderScreen(
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val imageCapture = remember {
         ImageCapture.Builder()
-            .setTargetResolution(android.util.Size(768, 768))
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .build()
+    }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    val imageAnalysis = remember {
+        ImageAnalysis.Builder()
+            .setTargetResolution(android.util.Size(768, 768))
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also { analysis ->
+                analysis.setAnalyzer(analysisExecutor) { imageProxy ->
+                    viewModel.analyzeLiveCameraFrame(imageProxy)
+                }
+            }
     }
 
     var pendingCameraAction by remember { mutableStateOf(CameraReadAction.READ_TEXT) }
@@ -92,9 +115,20 @@ fun DocumentReaderScreen(
                         CameraReadAction.COLOR -> viewModel.identifyCenterColor(imageProxy)
                         CameraReadAction.LIGHT -> viewModel.measureLightLevel(imageProxy)
                         CameraReadAction.CODE -> viewModel.scanBarcodeOrQrCode(imageProxy)
+                        CameraReadAction.INSTANT_TEXT_SNAPSHOT ->
+                            viewModel.analyzeInstantTextSnapshot(imageProxy)
+                        CameraReadAction.GUIDED_DOCUMENT_SNAPSHOT ->
+                            viewModel.analyzeGuidedDocumentSnapshot(imageProxy)
                     }
                 }
-                override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "Capture failed", exception)
+                    if (pendingCameraAction == CameraReadAction.INSTANT_TEXT_SNAPSHOT) {
+                        viewModel.instantTextSnapshotCaptureFailed()
+                    } else if (pendingCameraAction == CameraReadAction.GUIDED_DOCUMENT_SNAPSHOT) {
+                        viewModel.guidedDocumentSnapshotFailed()
+                    }
+                }
             }
         )
     }
@@ -125,9 +159,16 @@ fun DocumentReaderScreen(
     val currentPage by viewModel.currentPage.collectAsState()
     val totalPages by viewModel.totalPages.collectAsState()
     val documentMode by viewModel.documentMode.collectAsState()
+    val instantTextEnabled by viewModel.instantTextEnabled.collectAsState()
+    val instantTextPaused by viewModel.instantTextPaused.collectAsState()
+    val instantTextStatus by viewModel.instantTextStatus.collectAsState()
+    val instantTextScript by viewModel.instantTextScript.collectAsState()
+    val guidedDocumentEnabled by viewModel.guidedDocumentEnabled.collectAsState()
+    val guidedDocumentStatus by viewModel.guidedDocumentStatus.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
     var showCamera by remember { mutableStateOf(true) }
     var showMagnifier by remember { mutableStateOf(false) }
+    var showScriptMenu by remember { mutableStateOf(false) }
 
     if (showMagnifier) {
         MagnifierScreen(
@@ -148,9 +189,25 @@ fun DocumentReaderScreen(
     LaunchedEffect(key1 = true) {
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
+        viewModel.setInstantTextCaptureCallback {
+            pendingCameraAction = CameraReadAction.INSTANT_TEXT_SNAPSHOT
+            captureAndAnalyze()
+        }
+        viewModel.setGuidedDocumentCaptureCallback {
+            pendingCameraAction = CameraReadAction.GUIDED_DOCUMENT_SNAPSHOT
+            captureAndAnalyze()
+        }
     }
 
-    DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
+    DisposableEffect(Unit) {
+        onDispose {
+            imageAnalysis.clearAnalyzer()
+            analysisExecutor.shutdown()
+            viewModel.stopInstantText(announce = false)
+            viewModel.stopGuidedDocumentCapture(announce = false)
+            viewModel.stopProcessing()
+        }
+    }
 
     // Show model name Toast when model changes
     val activeModelName by viewModel.activeModelName.collectAsState()
@@ -184,13 +241,45 @@ fun DocumentReaderScreen(
                             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                             try {
                                 cameraProvider.unbindAll()
-                                cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
+                                cameraProvider.bindToLifecycle(
+                                    lifecycleOwner,
+                                    CameraSelector.DEFAULT_BACK_CAMERA,
+                                    preview,
+                                    imageCapture,
+                                    imageAnalysis,
+                                )
                             } catch (exc: Exception) { Log.e(TAG, "Binding failed", exc) }
                             previewView
                         },
                         modifier = Modifier.fillMaxSize()
                     )
                     if (!videoPreviewOn) { Box(modifier = Modifier.fillMaxSize().background(Color.Black)) }
+                    if (
+                        displayText.isNotEmpty() ||
+                        instantTextStatus.isNotEmpty() ||
+                        guidedDocumentStatus.isNotEmpty()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp)
+                                .background(Color.Black.copy(alpha = 0.72f))
+                                .padding(12.dp)
+                                .verticalScroll(rememberScrollState())
+                                .semantics { liveRegion = LiveRegionMode.Polite },
+                        ) {
+                            if (instantTextStatus.isNotEmpty()) {
+                                Text(instantTextStatus, color = Color(0xFFBDBDBD), fontSize = 13.sp)
+                            }
+                            if (guidedDocumentStatus.isNotEmpty()) {
+                                Text(guidedDocumentStatus, color = Color(0xFFBDBDBD), fontSize = 13.sp)
+                            }
+                            if (displayText.isNotEmpty()) {
+                                Text(displayText, color = Color.White, fontSize = 16.sp)
+                            }
+                        }
+                    }
                 }
             } else {
                 // Text display area
@@ -272,10 +361,75 @@ fun DocumentReaderScreen(
                             captureAndAnalyze()
                         }
                     },
-                    enabled = !isAnalyzing && hasCameraPermission,
+                    enabled =
+                        !isAnalyzing && !instantTextEnabled && !guidedDocumentEnabled &&
+                            hasCameraPermission,
                     highlighted = true,
                     highlightColor = Color(0xFF4CAF50),
                 )
+                EchoSenseActionButton(
+                    icon = Icons.Default.DocumentScanner,
+                    label = if (guidedDocumentEnabled) "Scan On" else "Scan",
+                    contentDescription =
+                        if (guidedDocumentEnabled) "Turn off Guided Scan" else "Turn on Guided Scan",
+                    onClick = { viewModel.toggleGuidedDocumentCapture() },
+                    enabled = !isAnalyzing && !instantTextEnabled && hasCameraPermission,
+                    highlighted = guidedDocumentEnabled,
+                    highlightColor = Color(0xFF4CAF50),
+                )
+                if (guidedDocumentEnabled) {
+                    EchoSenseActionButton(
+                        icon = Icons.Default.CameraAlt,
+                        label = "Capture",
+                        contentDescription =
+                            "Capture document now when automatic page detection cannot capture it",
+                        onClick = { viewModel.captureGuidedDocumentManually() },
+                        enabled = !isAnalyzing,
+                    )
+                }
+                EchoSenseActionButton(
+                    icon = Icons.Default.TextFields,
+                    label = if (instantTextEnabled) "Instant On" else "Instant",
+                    contentDescription =
+                        if (instantTextEnabled) "Turn off Instant Text" else "Turn on Instant Text",
+                    onClick = { viewModel.toggleInstantText() },
+                    enabled = !isAnalyzing && !guidedDocumentEnabled && hasCameraPermission,
+                    highlighted = instantTextEnabled,
+                    highlightColor = Color(0xFF4CAF50),
+                )
+                Box {
+                    EchoSenseActionButton(
+                        icon = Icons.Default.Language,
+                        label = "Language",
+                        contentDescription =
+                            "Instant Text script. Current selection ${instantTextScript.displayName}",
+                        onClick = { showScriptMenu = true },
+                    )
+                    DropdownMenu(
+                        expanded = showScriptMenu,
+                        onDismissRequest = { showScriptMenu = false },
+                    ) {
+                        OcrScriptPreference.entries.forEach { preference ->
+                            DropdownMenuItem(
+                                text = { Text(preference.displayName) },
+                                onClick = {
+                                    showScriptMenu = false
+                                    viewModel.setInstantTextScript(preference)
+                                },
+                            )
+                        }
+                    }
+                }
+                if (instantTextEnabled) {
+                    EchoSenseActionButton(
+                        icon = if (instantTextPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        label = if (instantTextPaused) "Resume" else "Pause",
+                        contentDescription =
+                            if (instantTextPaused) "Resume Instant Text" else "Pause Instant Text and keep recognized text",
+                        onClick = { viewModel.toggleInstantTextPause() },
+                        enabled = true,
+                    )
+                }
                 EchoSenseActionButton(
                     icon = Icons.Default.Palette,
                     label = "Color",
@@ -289,7 +443,9 @@ fun DocumentReaderScreen(
                             showCamera = true
                         }
                     },
-                    enabled = !isAnalyzing && hasCameraPermission,
+                    enabled =
+                        !isAnalyzing && !instantTextEnabled && !guidedDocumentEnabled &&
+                            hasCameraPermission,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.LightMode,
@@ -304,7 +460,9 @@ fun DocumentReaderScreen(
                             showCamera = true
                         }
                     },
-                    enabled = !isAnalyzing && hasCameraPermission,
+                    enabled =
+                        !isAnalyzing && !instantTextEnabled && !guidedDocumentEnabled &&
+                            hasCameraPermission,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.QrCodeScanner,
@@ -319,14 +477,16 @@ fun DocumentReaderScreen(
                             showCamera = true
                         }
                     },
-                    enabled = !isAnalyzing && hasCameraPermission,
+                    enabled =
+                        !isAnalyzing && !instantTextEnabled && !guidedDocumentEnabled &&
+                            hasCameraPermission,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.ZoomIn,
                     label = "Magnify",
                     contentDescription = "Open camera magnifier",
                     onClick = { showMagnifier = true },
-                    enabled = hasCameraPermission,
+                    enabled = !instantTextEnabled && !guidedDocumentEnabled && hasCameraPermission,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.UploadFile,
@@ -336,13 +496,15 @@ fun DocumentReaderScreen(
                         showCamera = false
                         filePickerLauncher.launch(arrayOf("text/*", "application/pdf", "image/*"))
                     },
+                    enabled = !instantTextEnabled && !guidedDocumentEnabled,
                 )
                 EchoSenseActionButton(
                     icon = Icons.Default.Stop,
                     label = "Stop",
                     contentDescription = "Stop reading aloud",
                     onClick = { viewModel.stopReading() },
-                    enabled = isProcessing || isAnalyzing,
+                    enabled =
+                        isProcessing || isAnalyzing || instantTextEnabled || guidedDocumentEnabled,
                     highlighted = true,
                     highlightColor = Color(0xFFF44336),
                 )
@@ -358,4 +520,6 @@ private enum class CameraReadAction {
     COLOR,
     LIGHT,
     CODE,
+    INSTANT_TEXT_SNAPSHOT,
+    GUIDED_DOCUMENT_SNAPSHOT,
 }

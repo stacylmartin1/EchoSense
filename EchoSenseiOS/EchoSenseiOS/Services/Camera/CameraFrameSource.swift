@@ -24,11 +24,13 @@ final class CameraFrameSource: NSObject, ObservableObject {
 
   private let sessionQueue = DispatchQueue(label: "com.echosense.camera.session")
   private let videoOutput = AVCaptureVideoDataOutput()
+  private let photoOutput = AVCapturePhotoOutput()
   private let depthOutput = AVCaptureDepthDataOutput()
   private var outputSynchronizer: AVCaptureDataOutputSynchronizer?
   private let frameQueue = DispatchQueue(label: "com.echosense.camera.frames", qos: .userInitiated)
   private let deliveryLock = NSLock()
   private var shouldDeliverFrames = false
+  private var photoCaptureProcessors: [Int64: PhotoCaptureProcessor] = [:]
 
   func requestPermissionAndStart() {
     switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -109,6 +111,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
     if session.canAddOutput(videoOutput) {
       session.addOutput(videoOutput)
     }
+    if session.canAddOutput(photoOutput) {
+      session.addOutput(photoOutput)
+    }
 
     if depthConfigured, session.canAddOutput(depthOutput) {
       depthOutput.alwaysDiscardsLateDepthData = true
@@ -121,6 +126,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
     }
 
     if let connection = videoOutput.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
+      connection.videoRotationAngle = 90
+    }
+    if let connection = photoOutput.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
       connection.videoRotationAngle = 90
     }
     if let connection = depthOutput.connection(with: .depthData), connection.isVideoRotationAngleSupported(90) {
@@ -206,6 +214,30 @@ final class CameraFrameSource: NSObject, ObservableObject {
     }
   }
 
+  func captureHighQualityPhoto() async throws -> UIImage {
+    try await withCheckedThrowingContinuation { continuation in
+      sessionQueue.async {
+        guard self.session.isRunning,
+              self.session.outputs.contains(where: { $0 === self.photoOutput }) else {
+          continuation.resume(throwing: CameraPhotoCaptureError.notReady)
+          return
+        }
+
+        let settings = AVCapturePhotoSettings()
+        settings.photoQualityPrioritization = .quality
+        let identifier = settings.uniqueID
+        let processor = PhotoCaptureProcessor { [weak self] result in
+          self?.sessionQueue.async {
+            self?.photoCaptureProcessors[identifier] = nil
+          }
+          continuation.resume(with: result)
+        }
+        self.photoCaptureProcessors[identifier] = processor
+        self.photoOutput.capturePhoto(with: settings, delegate: processor)
+      }
+    }
+  }
+
   func setTorch(enabled: Bool) {
     sessionQueue.async {
       guard let camera = (self.session.inputs.first as? AVCaptureDeviceInput)?.device,
@@ -234,6 +266,43 @@ final class CameraFrameSource: NSObject, ObservableObject {
     deliveryLock.lock()
     defer { deliveryLock.unlock() }
     return shouldDeliverFrames
+  }
+}
+
+private enum CameraPhotoCaptureError: LocalizedError {
+  case notReady
+  case noImageData
+
+  var errorDescription: String? {
+    switch self {
+    case .notReady: "The camera is not ready to capture a photo."
+    case .noImageData: "The captured photo could not be decoded."
+    }
+  }
+}
+
+private final class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
+  private let completion: (Result<UIImage, Error>) -> Void
+
+  init(completion: @escaping (Result<UIImage, Error>) -> Void) {
+    self.completion = completion
+  }
+
+  func photoOutput(
+    _ output: AVCapturePhotoOutput,
+    didFinishProcessingPhoto photo: AVCapturePhoto,
+    error: Error?
+  ) {
+    if let error {
+      completion(.failure(error))
+      return
+    }
+    guard let data = photo.fileDataRepresentation(),
+          let image = UIImage(data: data) else {
+      completion(.failure(CameraPhotoCaptureError.noImageData))
+      return
+    }
+    completion(.success(image))
   }
 }
 

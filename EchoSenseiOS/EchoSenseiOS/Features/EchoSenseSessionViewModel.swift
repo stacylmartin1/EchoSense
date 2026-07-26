@@ -69,6 +69,12 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   @Published var assistantAttachmentImage: UIImage?
   @Published var isListeningForAssistant = false
   @Published var assistantModelMode: AssistantModelMode = .onDevice
+  @Published var instantTextEnabled = false
+  @Published var instantTextPaused = false
+  @Published var instantTextStatus = ""
+  @Published var instantTextLanguage: OCRLanguageOption = .automatic
+  @Published var guidedDocumentEnabled = false
+  @Published var guidedDocumentStatus = ""
   @Published private(set) var isNetworkAvailable = false
 
   let camera = CameraFrameSource()
@@ -76,6 +82,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private let speech = SpeechOutputService()
   private let voiceCommands = VoiceCommandService()
   private let ocrService: OCRService = VisionOCRService()
+  private let documentCaptureService = VisionDocumentCaptureService()
   private let barcodeScanner: BarcodeScanning = VisionBarcodeScanner()
   private let localLLM: LocalLLMClient = LiteRTLMClient()
   private lazy var translationService: TranslationService = LocalTranslationService(localLLM: localLLM)
@@ -101,6 +108,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var startupAnnouncementTask: Task<Void, Never>?
   private var detectorPrepareTask: Task<Void, Never>?
   private var analysisTask: Task<Void, Never>?
+  private var instantTextTask: Task<Void, Never>?
+  private var guidedDocumentTask: Task<Void, Never>?
   private var localModelLoadTask: Task<Void, Never>?
   private var hasAttemptedPersistedModelLoad = false
   private var stagedLocalModelURL: URL?
@@ -108,6 +117,21 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var safetyAnnouncementsSuspendedForAnalysis = false
   private var assistantDocumentText: String?
   private var hasInitializedAssistantModelMode = false
+  private var lastInstantTextFrameTime: Date = .distantPast
+  private var instantTextCandidate = ""
+  private var instantTextCandidateCount = 0
+  private var lastSpokenInstantText = ""
+  private var lastInstantGuidanceTime: Date = .distantPast
+  private var instantGuidanceCandidate = ""
+  private var instantGuidanceCandidateCount = 0
+  private var instantEmptyResultCount = 0
+  private var lastGuidedDocumentFrameTime: Date = .distantPast
+  private var guidedDocumentCandidate: DocumentQuadrilateral?
+  private var guidedDocumentStableCount = 0
+  private var guidedDocumentGuidanceCandidate = ""
+  private var guidedDocumentGuidanceCount = 0
+  private var lastGuidedDocumentAnnouncementTime: Date = .distantPast
+  private var guidedDocumentManualCapturePending = false
 
   init(feature: EchoSenseFeature) {
     self.feature = feature
@@ -159,6 +183,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   func selectFeature(_ newFeature: EchoSenseFeature) {
     guard feature != newFeature else { return }
 
+    stopInstantText(announce: false)
+    stopGuidedDocumentCapture(announce: false)
     feature = newFeature
     voiceCommands.stop()
     isListeningForVoiceCommand = false
@@ -211,6 +237,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     startupAnnouncementTask?.cancel()
     detectorPrepareTask?.cancel()
     analysisTask?.cancel()
+    stopInstantText(announce: false)
+    stopGuidedDocumentCapture(announce: false)
     voiceCommands.stop()
     isListeningForVoiceCommand = false
     pendingNavigationVoiceCommand = nil
@@ -581,6 +609,17 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       return
     }
 
+    if instantTextEnabled {
+      stopInstantText()
+      speech.stop()
+      return
+    }
+    if guidedDocumentEnabled || guidedDocumentTask != nil {
+      stopGuidedDocumentCapture()
+      speech.stop()
+      return
+    }
+
     analysisTask?.cancel()
     voiceCommands.stop()
     isListeningForVoiceCommand = false
@@ -590,6 +629,116 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     startupAnnouncementTask?.cancel()
     speech.stop()
     announceAccessibility("Stopped.")
+  }
+
+  func toggleInstantText() {
+    if instantTextEnabled {
+      stopInstantText()
+      return
+    }
+    guard feature == .documentReader else { return }
+    stopGuidedDocumentCapture(announce: false)
+    instantTextEnabled = true
+    instantTextPaused = false
+    instantTextStatus = "Scanning for text"
+    instantTextCandidate = ""
+    instantTextCandidateCount = 0
+    lastSpokenInstantText = ""
+    lastInstantGuidanceTime = .distantPast
+    instantGuidanceCandidate = ""
+    instantGuidanceCandidateCount = 0
+    instantEmptyResultCount = 0
+    lastInstantTextFrameTime = .distantPast
+    speech.announce("Instant text on. Point the camera at text.")
+    announceAccessibility("Instant text on. Point the camera at text.")
+  }
+
+  func toggleInstantTextPause() {
+    guard instantTextEnabled else { return }
+    instantTextPaused.toggle()
+    instantTextStatus = instantTextPaused ? "Paused on recognized text" : "Scanning for text"
+    let message = instantTextPaused ? "Instant text paused." : "Instant text resumed."
+    speech.announce(message)
+    announceAccessibility(message)
+  }
+
+  func setInstantTextLanguage(_ language: OCRLanguageOption) {
+    instantTextLanguage = language
+    instantTextCandidate = ""
+    instantTextCandidateCount = 0
+    lastSpokenInstantText = ""
+    let message = "Instant Text language \(language.title)."
+    speech.announce(message)
+    announceAccessibility(message)
+  }
+
+  private func stopInstantText(announce: Bool = true) {
+    guard instantTextEnabled || instantTextTask != nil else { return }
+    instantTextTask?.cancel()
+    instantTextTask = nil
+    instantTextEnabled = false
+    instantTextPaused = false
+    instantTextStatus = ""
+    instantTextCandidate = ""
+    instantTextCandidateCount = 0
+    instantEmptyResultCount = 0
+    if announce {
+      speech.announce("Instant text off.")
+      announceAccessibility("Instant text off.")
+    }
+  }
+
+  func toggleGuidedDocumentCapture() {
+    if guidedDocumentEnabled {
+      stopGuidedDocumentCapture()
+      return
+    }
+    guard feature == .documentReader, !isAnalyzing else { return }
+    stopInstantText(announce: false)
+    guidedDocumentEnabled = true
+    guidedDocumentStatus = "Looking for a complete page"
+    guidedDocumentCandidate = nil
+    guidedDocumentStableCount = 0
+    guidedDocumentGuidanceCandidate = ""
+    guidedDocumentGuidanceCount = 0
+    guidedDocumentManualCapturePending = false
+    lastGuidedDocumentAnnouncementTime = .distantPast
+    lastGuidedDocumentFrameTime = .distantPast
+    let message = "Guided scan on. Center one complete page in the camera view."
+    speech.announce(message)
+    announceAccessibility(message)
+  }
+
+  func captureGuidedDocumentManually() {
+    guard guidedDocumentEnabled else { return }
+    guard guidedDocumentTask == nil else {
+      guidedDocumentManualCapturePending = true
+      guidedDocumentStatus = "Manual capture requested. Hold steady"
+      return
+    }
+    guidedDocumentManualCapturePending = false
+    guidedDocumentTask = Task { [weak self] in
+      guard let self else { return }
+      defer { finishGuidedDocumentTask() }
+      await captureGuidedDocument(manual: true)
+    }
+  }
+
+  private func stopGuidedDocumentCapture(announce: Bool = true) {
+    let wasActive = guidedDocumentEnabled || guidedDocumentTask != nil
+    guidedDocumentTask?.cancel()
+    guidedDocumentTask = nil
+    guidedDocumentEnabled = false
+    guidedDocumentStatus = ""
+    guidedDocumentCandidate = nil
+    guidedDocumentStableCount = 0
+    guidedDocumentGuidanceCandidate = ""
+    guidedDocumentGuidanceCount = 0
+    guidedDocumentManualCapturePending = false
+    if announce, wasActive {
+      speech.announce("Guided scan off.")
+      announceAccessibility("Guided scan off.")
+    }
   }
 
   private func runAssistantTurn(settings: AppSettings) async {
@@ -1394,6 +1543,274 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     candidateAlert = nil
     candidateAlertSince = nil
   }
+
+  private func submitInstantTextFrameIfNeeded() {
+    guard feature == .documentReader,
+          instantTextEnabled,
+          !instantTextPaused,
+          instantTextTask == nil,
+          Date().timeIntervalSince(lastInstantTextFrameTime) >= 0.85,
+          let sampleBuffer = latestSampleBuffer,
+          let image = camera.captureCurrentFrameImage(from: sampleBuffer) else { return }
+
+    lastInstantTextFrameTime = Date()
+    instantTextTask = Task { [weak self] in
+      guard let self else { return }
+      defer { instantTextTask = nil }
+      do {
+        let result = try await ocrService.recognize(in: image, language: instantTextLanguage)
+        try Task.checkCancellation()
+        await applyInstantTextResult(result, image: image)
+      } catch is CancellationError {
+      } catch {
+        instantTextStatus = "Waiting for a clear image"
+      }
+    }
+  }
+
+  private func submitGuidedDocumentFrameIfNeeded() {
+    guard feature == .documentReader,
+          guidedDocumentEnabled,
+          guidedDocumentTask == nil,
+          Date().timeIntervalSince(lastGuidedDocumentFrameTime) >= 0.55,
+          let sampleBuffer = latestSampleBuffer,
+          let image = camera.captureCurrentFrameImage(from: sampleBuffer) else { return }
+
+    lastGuidedDocumentFrameTime = Date()
+    guidedDocumentTask = Task { [weak self] in
+      guard let self else { return }
+      defer { finishGuidedDocumentTask() }
+      do {
+        let observation = try await documentCaptureService.observe(in: image)
+        try Task.checkCancellation()
+        await applyGuidedDocumentObservation(observation, image: image)
+      } catch is CancellationError {
+      } catch {
+        guidedDocumentStatus = "Looking for a complete page"
+      }
+    }
+  }
+
+  private func finishGuidedDocumentTask() {
+    guidedDocumentTask = nil
+    if guidedDocumentManualCapturePending, guidedDocumentEnabled {
+      captureGuidedDocumentManually()
+    }
+  }
+
+  private func applyGuidedDocumentObservation(
+    _ observation: DocumentFrameObservation,
+    image: UIImage
+  ) async {
+    guard guidedDocumentEnabled else { return }
+
+    let imageIssue = VisualUtilityAnalyzer.textCaptureIssue(in: image)
+    let guidance = imageIssue ?? observation.guidance
+    guidedDocumentStatus = guidance
+
+    guard let quadrilateral = observation.quadrilateral else {
+      guidedDocumentCandidate = nil
+      guidedDocumentStableCount = 0
+      await announcePersistentGuidedDocumentGuidance(guidance)
+      return
+    }
+
+    if let candidate = guidedDocumentCandidate,
+       quadrilateral.maximumCornerDistance(from: candidate) < 0.025 {
+      guidedDocumentStableCount += 1
+    } else {
+      guidedDocumentCandidate = quadrilateral
+      guidedDocumentStableCount = 1
+    }
+
+    guard guidance == "Hold steady" else {
+      await announcePersistentGuidedDocumentGuidance(guidance)
+      return
+    }
+    guidedDocumentGuidanceCandidate = ""
+    guidedDocumentGuidanceCount = 0
+    guard guidedDocumentStableCount >= 3 else { return }
+    await captureGuidedDocument(manual: false)
+  }
+
+  private func announcePersistentGuidedDocumentGuidance(_ guidance: String) async {
+    if guidance == guidedDocumentGuidanceCandidate {
+      guidedDocumentGuidanceCount += 1
+    } else {
+      guidedDocumentGuidanceCandidate = guidance
+      guidedDocumentGuidanceCount = 1
+    }
+    guard guidedDocumentGuidanceCount >= 2,
+          Date().timeIntervalSince(lastGuidedDocumentAnnouncementTime) >= 6 else { return }
+    lastGuidedDocumentAnnouncementTime = Date()
+    guidedDocumentGuidanceCount = 0
+    speech.announce(guidance)
+    announceAccessibility(guidance)
+    await speech.waitUntilFinished()
+    try? await Task.sleep(for: .milliseconds(500))
+  }
+
+  private func captureGuidedDocument(manual: Bool) async {
+    guard guidedDocumentEnabled, !Task.isCancelled else { return }
+    speech.stop()
+    isAnalyzing = true
+    guidedDocumentStatus = manual ? "Capturing page manually" : "Page stable. Capturing"
+    analysisStage = "Focusing on document"
+    activeModelName = "Vision document scanner"
+    camera.requestCenterFocus()
+    defer {
+      isAnalyzing = false
+      analysisStage = ""
+    }
+
+    do {
+      try await Task.sleep(for: .milliseconds(450))
+      try Task.checkCancellation()
+      let photo = try await camera.captureHighQualityPhoto()
+      guidedDocumentStatus = "Correcting page"
+      let corrected = try await documentCaptureService.correctAndEnhance(photo)
+      try Task.checkCancellation()
+      guidedDocumentStatus = "Recognizing document text"
+      let result = try await ocrService.recognize(in: corrected, language: instantTextLanguage)
+      try Task.checkCancellation()
+      let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !text.isEmpty else {
+        guidedDocumentStatus = "No text found. Adjust the page and try Capture"
+        guidedDocumentCandidate = nil
+        guidedDocumentStableCount = 0
+        let message = "No text found. Adjust the page and try Capture."
+        speech.announce(message)
+        announceAccessibility(message)
+        return
+      }
+
+      transcript = text
+      guidedDocumentEnabled = false
+      guidedDocumentStatus = "Document captured"
+      guidedDocumentCandidate = nil
+      guidedDocumentStableCount = 0
+      speech.announce(text)
+      announceAccessibility("Document captured and text recognized.")
+    } catch is CancellationError {
+    } catch {
+      let message = "Unable to capture the document. Guided scan is still active."
+      guidedDocumentStatus = message
+      errorMessage = error.localizedDescription
+      speech.announce(message)
+      announceAccessibility(message)
+    }
+  }
+
+  private func applyInstantTextResult(_ result: OCRResult, image: UIImage) async {
+    guard instantTextEnabled, !instantTextPaused else { return }
+    let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard text.count >= 2 else {
+      instantEmptyResultCount += 1
+      instantTextCandidate = ""
+      instantTextCandidateCount = 0
+      instantTextStatus = "Looking for text"
+      let issue = VisualUtilityAnalyzer.textCaptureIssue(in: image) ??
+        (instantEmptyResultCount >= 3
+          ? "No text detected. Center printed text in the view and hold the phone steady."
+          : nil)
+      await announcePersistentInstantGuidanceIfNeeded(issue)
+      return
+    }
+
+    instantEmptyResultCount = 0
+    instantGuidanceCandidate = ""
+    instantGuidanceCandidateCount = 0
+    let normalized = normalizedInstantText(text)
+    if textSimilarity(normalized, instantTextCandidate) >= 0.78 {
+      instantTextCandidateCount += 1
+    } else {
+      instantTextCandidate = normalized
+      instantTextCandidateCount = 1
+    }
+    let scriptSuffix = result.script.map { ", \($0)" } ?? ""
+    instantTextStatus = instantTextCandidateCount >= 2 ? "Text recognized\(scriptSuffix)" : "Hold steady"
+
+    guard instantTextCandidateCount >= 2,
+          textSimilarity(normalized, normalizedInstantText(lastSpokenInstantText)) < 0.88 else { return }
+    await captureAndReadStableInstantText(fallbackText: text)
+  }
+
+  private func captureAndReadStableInstantText(fallbackText: String) async {
+    instantTextStatus = "Hold steady. Capturing text"
+    camera.requestCenterFocus()
+    try? await Task.sleep(for: .milliseconds(450))
+    guard instantTextEnabled, !instantTextPaused, !Task.isCancelled else { return }
+
+    var capturedText = ""
+    do {
+      let photo = try await camera.captureHighQualityPhoto()
+      let result = try await ocrService.recognize(in: photo, language: instantTextLanguage)
+      capturedText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    } catch {
+      // Fall back to the stable live result if still capture is interrupted.
+    }
+
+    let text = capturedText.count >= 2 ? capturedText : fallbackText
+    guard textSimilarity(
+      normalizedInstantText(text),
+      normalizedInstantText(lastSpokenInstantText)
+    ) < 0.88 else {
+      instantTextStatus = "Scanning for new text"
+      return
+    }
+
+    transcript = text
+    lastSpokenInstantText = text
+    instantTextStatus = "Reading captured text"
+    speech.announce(text)
+    announceAccessibility("New text captured and recognized.")
+    await speech.waitUntilFinished()
+    try? await Task.sleep(for: .milliseconds(900))
+    guard instantTextEnabled, !Task.isCancelled else { return }
+    instantTextCandidate = ""
+    instantTextCandidateCount = 0
+    instantTextStatus = instantTextPaused ? "Paused on recognized text" : "Scanning for new text"
+  }
+
+  private func announcePersistentInstantGuidanceIfNeeded(_ issue: String?) async {
+    guard let issue else {
+      instantGuidanceCandidate = ""
+      instantGuidanceCandidateCount = 0
+      return
+    }
+    if issue == instantGuidanceCandidate {
+      instantGuidanceCandidateCount += 1
+    } else {
+      instantGuidanceCandidate = issue
+      instantGuidanceCandidateCount = 1
+    }
+    guard instantGuidanceCandidateCount >= 3,
+          Date().timeIntervalSince(lastInstantGuidanceTime) >= 12 else { return }
+    lastInstantGuidanceTime = Date()
+    instantGuidanceCandidateCount = 0
+    instantTextStatus = issue
+    speech.announce(issue)
+    announceAccessibility(issue)
+    await speech.waitUntilFinished()
+    try? await Task.sleep(for: .milliseconds(700))
+  }
+
+  private func normalizedInstantText(_ text: String) -> String {
+    text.lowercased()
+      .components(separatedBy: CharacterSet.alphanumerics.inverted)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+  }
+
+  private func textSimilarity(_ lhs: String, _ rhs: String) -> Double {
+    guard !lhs.isEmpty, !rhs.isEmpty else { return lhs == rhs && !lhs.isEmpty ? 1 : 0 }
+    if lhs == rhs { return 1 }
+    let left = Set(lhs.split(separator: " "))
+    let right = Set(rhs.split(separator: " "))
+    let union = left.union(right)
+    guard !union.isEmpty else { return 0 }
+    return Double(left.intersection(right).count) / Double(union.count)
+  }
 }
 
 private extension Array {
@@ -1450,6 +1867,8 @@ extension EchoSenseSessionViewModel: CameraFrameSourceDelegate {
     Task { @MainActor in
       guard isActive else { return }
       latestSampleBuffer = sampleBuffer
+      submitInstantTextFrameIfNeeded()
+      submitGuidedDocumentFrameIfNeeded()
       if feature.supportsCollisionAvoidance && collisionAvoidanceAvailable && collisionAvoidanceEnabled {
         guard shouldSubmitDetectionFrame() else { return }
         let timestamp = nextDetectionTimestampMilliseconds(for: sampleBuffer)

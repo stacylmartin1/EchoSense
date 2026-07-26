@@ -1,6 +1,6 @@
 # EchoSense Competitive Feature Parity Roadmap
 
-Last updated: July 24, 2026
+Last updated: July 25, 2026
 
 Status legend: **Complete**, **Implemented; device validation pending**, **In progress**,
 **Planned**, **Research**, **Deferred**
@@ -185,21 +185,58 @@ gray result, while still smoothing individual noisy pixels.
 
 ### 1B. Instant Text
 
-- **Planned:** Continuous on-device OCR with stability filtering and duplicate suppression.
-- **Planned:** Spoken focus/alignment guidance.
-- **Planned:** Pause/freeze and explore recognized text.
-- **Planned:** Language selection and automatic language/script reporting.
+- **Implemented; device validation pending — iOS and Android:** Hybrid on-device OCR:
+  throttled live frames discover text, two matching results establish stability, and a
+  focused high-quality still is captured for the text that is actually read. The stable
+  live result remains available as a fallback if still capture or OCR fails.
+- **Implemented; tuning pending — iOS and Android:** Persistent blur, glare, and framing
+  guidance. A condition must remain present across three samples, announcements have a
+  12-second cooldown, and guidance is kept separate from recognized text. Full page-edge
+  guidance remains planned for 1C.
+- **Implemented; device validation pending — iOS and Android:** Instant OCR and guidance
+  pause while text or guidance is being spoken, then resume after a short cooldown. This
+  prevents repeated guidance from truncating itself and reduces camera/TTS contention.
+- **Implemented; device validation pending — iOS and Android:** Pause/resume retains the
+  latest recognized text for visual and screen-reader exploration.
+- **Implemented; device validation pending — iOS and Android:** Automatic script
+  reporting and an accessible language/script selector. iOS offers automatic plus common
+  language hints; Android offers the script families supported by its installed ML Kit
+  recognizers. Broader downloadable language packs remain planned for Phase 3.
+
+Apple Vision and Google ML Kit now return a shared structured OCR result containing text,
+line bounds, confidence, script when available, backend provenance, and processing time.
+Read and Translate retain compatibility with their existing plain-text flow.
+
+### OCR engine evaluation
+
+- **Deferred:** PP-OCRv5 mobile evaluation. Its native runtime, model conversion,
+  platform asymmetry, and integration cost are not justified while Apple Vision and
+  Google ML Kit continue to meet the current product needs.
+- The structured OCR interfaces remain useful for testing and for a future backend
+  change without coupling Read or Translate to one engine.
 
 ### 1C. Guided documents
 
-- **Planned:** Spoken page-edge and stability guidance.
-- **Planned:** Automatic capture when a complete page is stable.
-- **Planned:** Crop, rotate, deskew, shadow cleanup, and contrast enhancement.
+- **Implemented; device validation pending — iOS and Android:** Guided single-page mode
+  with persistent spoken page-edge, distance, blur, glare, and stability guidance. A
+  manual Capture action remains available when automatic edge detection is uncertain.
+- **Implemented; device validation pending — iOS and Android:** Automatic high-quality
+  still capture after a complete page remains stable across three observations.
+- **Implemented; device validation pending — iOS and Android:** Perspective crop,
+  rotation/deskew, grayscale contrast enhancement, and high-quality offline OCR before
+  reading the corrected page.
 - **Planned:** Multi-page sessions with page reorder/delete/rescan.
 - **Planned:** Structured navigation by page, heading, paragraph, sentence, and word.
 - **Planned:** Accessible local document library, search, rename, delete confirmation,
   and export.
 - **Planned:** Offline and optional online questions over saved documents.
+
+iOS Guided Scan uses Apple Vision rectangle detection and Core Image perspective
+correction. Android uses an offline luminance-edge detector and projective bitmap
+transform so it does not add a network or Play-services scanner dependency. The Android
+detector is expected to work best when a rectangular page contrasts with its background;
+the accessible manual Capture action is the required fallback for low-contrast pages,
+screens without a visible bezel, and unusual layouts.
 
 ## Phase 2 — Find and explore
 

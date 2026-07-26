@@ -18,6 +18,34 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+data class OcrTextLine(
+    val text: String,
+    val boundingBox: android.graphics.Rect?,
+    val confidence: Float,
+)
+
+data class StructuredOcrResult(
+    val text: String,
+    val lines: List<OcrTextLine>,
+    val script: String?,
+    val confidence: Float,
+    val processingTimeMillis: Long,
+)
+
+interface OcrBackend {
+    val name: String
+    suspend fun recognize(bitmap: Bitmap): StructuredOcrResult
+}
+
+enum class OcrScriptPreference(val displayName: String) {
+    AUTOMATIC("Automatic"),
+    LATIN("Latin"),
+    CHINESE("Chinese"),
+    JAPANESE("Japanese"),
+    KOREAN("Korean"),
+    DEVANAGARI("Devanagari"),
+}
+
 /**
  * On-device OCR using Google ML Kit Text Recognition.
  *
@@ -35,9 +63,10 @@ import kotlin.coroutines.resumeWithException
  * Returns an empty string if no text passes quality checks (caller should
  * fall back to Gemini or LLM OCR for unsupported scripts like Thai, Arabic).
  */
-object OcrHelper {
+object OcrHelper : OcrBackend {
 
     private const val TAG = "OcrHelper"
+    override val name = "Google ML Kit"
 
     /** Minimum characters for an OCR result to be considered valid. */
     private const val MIN_TEXT_LENGTH = 10
@@ -59,11 +88,13 @@ object OcrHelper {
         TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
     }
 
-    private data class OcrResult(
+    private data class RecognizerResult(
         val script: String,
-        val text: String,
-        val confidence: Float   // average element-level confidence, 0..1
-    )
+        val visionText: Text?,
+        val confidence: Float,
+    ) {
+        val text: String get() = visionText?.text.orEmpty()
+    }
 
     /**
      * Extract text from a [Bitmap] by running all script recognizers in
@@ -71,33 +102,78 @@ object OcrHelper {
      *
      * @return extracted text, or empty string if nothing passed quality checks.
      */
-    suspend fun recognizeText(bitmap: Bitmap): String = coroutineScope {
+    suspend fun recognizeText(bitmap: Bitmap): String = recognize(bitmap).text
+
+    override suspend fun recognize(bitmap: Bitmap): StructuredOcrResult =
+        recognize(bitmap, OcrScriptPreference.AUTOMATIC)
+
+    suspend fun recognize(
+        bitmap: Bitmap,
+        preference: OcrScriptPreference,
+        minimumTextLength: Int = MIN_TEXT_LENGTH,
+    ): StructuredOcrResult = coroutineScope {
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         val image = InputImage.fromBitmap(bitmap, 0)
 
-        val results = listOf(
-            async { runRecognizer("Latin", latinRecognizer, image) },
-            async { runRecognizer("Chinese", chineseRecognizer, image) },
-            async { runRecognizer("Japanese", japaneseRecognizer, image) },
-            async { runRecognizer("Korean", koreanRecognizer, image) },
-            async { runRecognizer("Devanagari", devanagariRecognizer, image) },
-        ).awaitAll()
+        val recognizers = when (preference) {
+            OcrScriptPreference.AUTOMATIC -> listOf(
+                "Latin" to latinRecognizer,
+                "Chinese" to chineseRecognizer,
+                "Japanese" to japaneseRecognizer,
+                "Korean" to koreanRecognizer,
+                "Devanagari" to devanagariRecognizer,
+            )
+            OcrScriptPreference.LATIN -> listOf("Latin" to latinRecognizer)
+            OcrScriptPreference.CHINESE -> listOf("Chinese" to chineseRecognizer)
+            OcrScriptPreference.JAPANESE -> listOf("Japanese" to japaneseRecognizer)
+            OcrScriptPreference.KOREAN -> listOf("Korean" to koreanRecognizer)
+            OcrScriptPreference.DEVANAGARI -> listOf("Devanagari" to devanagariRecognizer)
+        }
+        val results = recognizers.map { (script, recognizer) ->
+            async { runRecognizer(script, recognizer, image) }
+        }.awaitAll()
 
         // Filter to results that pass quality checks, then pick best.
         val viable = results.filter {
-            it.text.length >= MIN_TEXT_LENGTH && passesQualityCheck(it)
+            it.text.length >= minimumTextLength && passesQualityCheck(it, minimumTextLength)
         }
 
         if (viable.isEmpty()) {
-            val best = results.maxByOrNull { it.text.length } ?: OcrResult("none", "", 0f)
-            Log.d(TAG, "No recognizer passed quality check (best: ${best.script}, " +
-                    "${best.text.length} chars, conf=${best.confidence})")
-            return@coroutineScope ""
+            val best = results.maxByOrNull { it.text.length }
+            Log.d(TAG, "No recognizer passed quality check (best: ${best?.script ?: "none"}, " +
+                    "${best?.text?.length ?: 0} chars, conf=${best?.confidence ?: 0f})")
+            return@coroutineScope StructuredOcrResult(
+                text = "",
+                lines = emptyList(),
+                script = best?.script,
+                confidence = best?.confidence ?: 0f,
+                processingTimeMillis = android.os.SystemClock.elapsedRealtime() - startedAt,
+            )
         }
 
         // Among viable results, prefer higher confidence, tie-break by length.
         val best = viable.maxByOrNull { it.confidence * 1000 + it.text.length }!!
         Log.d(TAG, "Best OCR: ${best.script} (${best.text.length} chars, conf=${best.confidence})")
-        best.text
+        StructuredOcrResult(
+            text = best.text.trim(),
+            lines = best.visionText?.textBlocks.orEmpty().flatMap { block ->
+                block.lines.map { line ->
+                    OcrTextLine(
+                        text = line.text,
+                        boundingBox = line.boundingBox,
+                        confidence = line.elements
+                            .map { it.confidence }
+                            .filter { it > 0f }
+                            .average()
+                            .takeUnless { it.isNaN() }
+                            ?.toFloat() ?: 0f,
+                    )
+                }
+            },
+            script = best.script,
+            confidence = best.confidence,
+            processingTimeMillis = android.os.SystemClock.elapsedRealtime() - startedAt,
+        )
     }
 
     /**
@@ -112,9 +188,12 @@ object OcrHelper {
      * Detect garbage output from script misrecognition (e.g., Latin recognizer
      * matching Thai script shapes to Latin lookalike characters).
      */
-    private fun passesQualityCheck(result: OcrResult): Boolean {
+    private fun passesQualityCheck(
+        result: RecognizerResult,
+        minimumTextLength: Int = MIN_TEXT_LENGTH,
+    ): Boolean {
         val text = result.text
-        if (text.length < MIN_TEXT_LENGTH) return false
+        if (text.length < minimumTextLength) return false
 
         // Check 1: Confidence must be reasonable (ML Kit returns 0..1)
         // If text is very short, require higher confidence to avoid gibberish
@@ -217,14 +296,14 @@ object OcrHelper {
         script: String,
         recognizer: TextRecognizer,
         image: InputImage
-    ): OcrResult {
+    ): RecognizerResult {
         return try {
             val visionText = recognizeWithRecognizer(recognizer, image)
             val confidence = computeAverageConfidence(visionText)
-            OcrResult(script, visionText.text, confidence)
+            RecognizerResult(script, visionText, confidence)
         } catch (e: Exception) {
             Log.w(TAG, "$script recognizer failed: ${e.message}")
-            OcrResult(script, "", 0f)
+            RecognizerResult(script, null, 0f)
         }
     }
 

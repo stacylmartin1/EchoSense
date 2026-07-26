@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.ui.echosense.EchoSenseBaseViewModel
 import com.google.ai.edge.gallery.ui.echosense.GeminiHelper
 import com.google.ai.edge.gallery.ui.echosense.OcrHelper
+import com.google.ai.edge.gallery.ui.echosense.OcrScriptPreference
 import com.google.ai.edge.gallery.ui.echosense.TesseractOcrHelper
 import com.google.ai.edge.gallery.ui.echosense.VisualUtilityAnalyzer
 import com.google.ai.edge.gallery.ui.echosense.BarcodeScannerHelper
@@ -23,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 @HiltViewModel
 class DocumentReaderViewModel @Inject constructor(
@@ -44,9 +46,51 @@ class DocumentReaderViewModel @Inject constructor(
     private val _documentMode = MutableStateFlow(DocumentMode.NONE)
     val documentMode: StateFlow<DocumentMode> = _documentMode
 
+    private val _instantTextEnabled = MutableStateFlow(false)
+    val instantTextEnabled: StateFlow<Boolean> = _instantTextEnabled
+
+    private val _instantTextPaused = MutableStateFlow(false)
+    val instantTextPaused: StateFlow<Boolean> = _instantTextPaused
+
+    private val _instantTextStatus = MutableStateFlow("")
+    val instantTextStatus: StateFlow<String> = _instantTextStatus
+
+    private val _instantTextScript = MutableStateFlow(OcrScriptPreference.AUTOMATIC)
+    val instantTextScript: StateFlow<OcrScriptPreference> = _instantTextScript
+
+    private val _guidedDocumentEnabled = MutableStateFlow(false)
+    val guidedDocumentEnabled: StateFlow<Boolean> = _guidedDocumentEnabled
+
+    private val _guidedDocumentStatus = MutableStateFlow("")
+    val guidedDocumentStatus: StateFlow<String> = _guidedDocumentStatus
+
     private var pdfRenderer: PdfRenderer? = null
     private var pdfDescriptor: ParcelFileDescriptor? = null
     private var textPages: List<String> = emptyList()
+    private val instantTextInFlight = AtomicBoolean(false)
+    private val instantSnapshotRequested = AtomicBoolean(false)
+    private var lastInstantTextFrameMillis = 0L
+    private var instantTextCandidate = ""
+    private var instantTextCandidateCount = 0
+    private var lastSpokenInstantText = ""
+    private var lastInstantGuidanceMillis = 0L
+    private var lastInstantFrameDiagnosticMillis = 0L
+    private var instantEmptyResultCount = 0
+    private var instantGuidanceCandidate = ""
+    private var instantGuidanceCandidateCount = 0
+    private var instantSnapshotFallbackText = ""
+    private var instantSpeechActive = false
+    private var instantTextCaptureCallback: (() -> Unit)? = null
+    private val guidedDocumentInFlight = AtomicBoolean(false)
+    private val guidedDocumentSnapshotRequested = AtomicBoolean(false)
+    private var guidedDocumentCaptureCallback: (() -> Unit)? = null
+    private var lastGuidedDocumentFrameMillis = 0L
+    private var guidedDocumentCandidate: DocumentQuad? = null
+    private var guidedDocumentStableCount = 0
+    private var guidedDocumentGuidanceCandidate = ""
+    private var guidedDocumentGuidanceCount = 0
+    private var lastGuidedDocumentGuidanceMillis = 0L
+    private var guidedDocumentSpeechActive = false
 
     init {
         PDFBoxResourceLoader.init(app)
@@ -203,6 +247,536 @@ class DocumentReaderViewModel @Inject constructor(
             imageProxy.close()
             _error.value = "Error: ${e.message}"
         }
+    }
+
+    fun toggleInstantText() {
+        if (_instantTextEnabled.value) {
+            stopInstantText()
+            return
+        }
+        stopGuidedDocumentCapture(announce = false)
+        _instantTextEnabled.value = true
+        _instantTextPaused.value = false
+        _instantTextStatus.value = "Scanning for text"
+        instantTextCandidate = ""
+        instantTextCandidateCount = 0
+        lastSpokenInstantText = ""
+        instantEmptyResultCount = 0
+        lastInstantGuidanceMillis = 0L
+        lastInstantFrameDiagnosticMillis = 0L
+        instantGuidanceCandidate = ""
+        instantGuidanceCandidateCount = 0
+        instantSnapshotRequested.set(false)
+        instantSpeechActive = false
+        lastInstantTextFrameMillis = 0L
+        announceAction("Instant text on. Point the camera at text.")
+    }
+
+    fun toggleInstantTextPause() {
+        if (!_instantTextEnabled.value) return
+        _instantTextPaused.value = !_instantTextPaused.value
+        _instantTextStatus.value =
+            if (_instantTextPaused.value) "Paused on recognized text" else "Scanning for text"
+        announceAction(if (_instantTextPaused.value) "Instant text paused." else "Instant text resumed.")
+    }
+
+    fun setInstantTextScript(preference: OcrScriptPreference) {
+        _instantTextScript.value = preference
+        instantTextCandidate = ""
+        instantTextCandidateCount = 0
+        lastSpokenInstantText = ""
+        announceAction("Instant Text script ${preference.displayName}.")
+    }
+
+    fun setInstantTextCaptureCallback(callback: () -> Unit) {
+        instantTextCaptureCallback = callback
+    }
+
+    fun setGuidedDocumentCaptureCallback(callback: () -> Unit) {
+        guidedDocumentCaptureCallback = callback
+    }
+
+    fun stopInstantText(announce: Boolean = true) {
+        if (!_instantTextEnabled.value && !instantTextInFlight.get()) return
+        _instantTextEnabled.value = false
+        _instantTextPaused.value = false
+        _instantTextStatus.value = ""
+        instantTextCandidate = ""
+        instantTextCandidateCount = 0
+        instantEmptyResultCount = 0
+        instantSnapshotRequested.set(false)
+        instantSpeechActive = false
+        if (announce) announceAction("Instant text off.")
+    }
+
+    fun toggleGuidedDocumentCapture() {
+        if (_guidedDocumentEnabled.value) {
+            stopGuidedDocumentCapture()
+            return
+        }
+        if (_isAnalyzing.value) return
+        stopInstantText(announce = false)
+        _guidedDocumentEnabled.value = true
+        _guidedDocumentStatus.value = "Looking for a complete page"
+        guidedDocumentCandidate = null
+        guidedDocumentStableCount = 0
+        guidedDocumentGuidanceCandidate = ""
+        guidedDocumentGuidanceCount = 0
+        lastGuidedDocumentGuidanceMillis = 0L
+        lastGuidedDocumentFrameMillis = 0L
+        guidedDocumentSnapshotRequested.set(false)
+        guidedDocumentSpeechActive = false
+        announceAction("Guided scan on. Center one complete page in the camera view.")
+    }
+
+    fun captureGuidedDocumentManually() {
+        requestGuidedDocumentSnapshot(manual = true)
+    }
+
+    fun stopGuidedDocumentCapture(announce: Boolean = true) {
+        val wasActive =
+            _guidedDocumentEnabled.value ||
+                guidedDocumentInFlight.get() ||
+                guidedDocumentSnapshotRequested.get()
+        _guidedDocumentEnabled.value = false
+        _guidedDocumentStatus.value = ""
+        guidedDocumentCandidate = null
+        guidedDocumentStableCount = 0
+        guidedDocumentSnapshotRequested.set(false)
+        guidedDocumentSpeechActive = false
+        if (announce && wasActive) announceAction("Guided scan off.")
+    }
+
+    fun analyzeLiveCameraFrame(imageProxy: ImageProxy) {
+        when {
+            _guidedDocumentEnabled.value -> analyzeGuidedDocumentFrame(imageProxy)
+            _instantTextEnabled.value -> analyzeInstantTextFrame(imageProxy)
+            else -> imageProxy.close()
+        }
+    }
+
+    private fun analyzeGuidedDocumentFrame(imageProxy: ImageProxy) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!_guidedDocumentEnabled.value ||
+            guidedDocumentSnapshotRequested.get() ||
+            guidedDocumentSpeechActive ||
+            now - lastGuidedDocumentFrameMillis < 550 ||
+            !guidedDocumentInFlight.compareAndSet(false, true)
+        ) {
+            imageProxy.close()
+            return
+        }
+        lastGuidedDocumentFrameMillis = now
+        val bitmap = try {
+            val source = imageProxy.toBitmap()
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            imageProxy.close()
+            rotateBitmapIfNeeded(source, rotation)
+        } catch (error: Exception) {
+            imageProxy.close()
+            guidedDocumentInFlight.set(false)
+            Log.w(TAG, "Guided document frame conversion failed", error)
+            null
+        }
+        if (bitmap == null) {
+            guidedDocumentInFlight.set(false)
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val analysis = DocumentCaptureAnalyzer.analyze(bitmap)
+                val qualityIssue = VisualUtilityAnalyzer.textCaptureIssue(bitmap)
+                if (_guidedDocumentEnabled.value) {
+                    applyGuidedDocumentAnalysis(analysis, qualityIssue)
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "Guided document edge analysis failed", error)
+                _guidedDocumentStatus.value = "Looking for a complete page"
+            } finally {
+                bitmap.recycle()
+                guidedDocumentInFlight.set(false)
+            }
+        }
+    }
+
+    private fun applyGuidedDocumentAnalysis(
+        analysis: DocumentFrameAnalysis,
+        qualityIssue: String?,
+    ) {
+        val guidance = qualityIssue ?: analysis.guidance
+        _guidedDocumentStatus.value = guidance
+        val quad = analysis.quad
+        if (quad == null) {
+            guidedDocumentCandidate = null
+            guidedDocumentStableCount = 0
+            announceGuidedDocumentGuidanceIfNeeded(guidance)
+            return
+        }
+
+        val candidate = guidedDocumentCandidate
+        if (candidate != null && quad.maximumCornerDistance(candidate) < 0.03f) {
+            guidedDocumentStableCount++
+        } else {
+            guidedDocumentCandidate = quad
+            guidedDocumentStableCount = 1
+        }
+        if (guidance != "Hold steady") {
+            announceGuidedDocumentGuidanceIfNeeded(guidance)
+            return
+        }
+        guidedDocumentGuidanceCandidate = ""
+        guidedDocumentGuidanceCount = 0
+        if (guidedDocumentStableCount >= 3) {
+            requestGuidedDocumentSnapshot(manual = false)
+        }
+    }
+
+    private fun announceGuidedDocumentGuidanceIfNeeded(guidance: String) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (guidance == guidedDocumentGuidanceCandidate) {
+            guidedDocumentGuidanceCount++
+        } else {
+            guidedDocumentGuidanceCandidate = guidance
+            guidedDocumentGuidanceCount = 1
+        }
+        if (guidedDocumentGuidanceCount < 2 ||
+            now - lastGuidedDocumentGuidanceMillis < 6_000
+        ) return
+        lastGuidedDocumentGuidanceMillis = now
+        guidedDocumentGuidanceCount = 0
+        guidedDocumentSpeechActive = true
+        speakText(guidance)
+    }
+
+    private fun requestGuidedDocumentSnapshot(manual: Boolean) {
+        if (!_guidedDocumentEnabled.value ||
+            !guidedDocumentSnapshotRequested.compareAndSet(false, true)
+        ) return
+        _guidedDocumentStatus.value =
+            if (manual) "Capturing page manually" else "Page stable. Capturing"
+        viewModelScope.launch(Dispatchers.Main) {
+            val callback = guidedDocumentCaptureCallback
+            if (callback == null || !_guidedDocumentEnabled.value) {
+                guidedDocumentSnapshotRequested.set(false)
+                _guidedDocumentStatus.value = "Camera is not ready"
+                return@launch
+            }
+            callback()
+        }
+    }
+
+    fun analyzeGuidedDocumentSnapshot(imageProxy: ImageProxy) {
+        if (!_guidedDocumentEnabled.value || !guidedDocumentSnapshotRequested.get()) {
+            imageProxy.close()
+            guidedDocumentSnapshotRequested.set(false)
+            return
+        }
+        val bitmap = try {
+            val source = imageProxy.toBitmap()
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            imageProxy.close()
+            rotateBitmapIfNeeded(source, rotation)
+        } catch (error: Exception) {
+            imageProxy.close()
+            Log.w(TAG, "Guided document still conversion failed", error)
+            null
+        }
+        if (bitmap == null) {
+            guidedDocumentSnapshotFailed()
+            return
+        }
+
+        startProcessing()
+        _isAnalyzing.value = true
+        _guidedDocumentStatus.value = "Correcting page"
+        val fallbackQuad = guidedDocumentCandidate
+        viewModelScope.launch(Dispatchers.Default) {
+            var corrected: Bitmap? = null
+            try {
+                corrected = DocumentCaptureAnalyzer.correctAndEnhance(bitmap, fallbackQuad)
+                _guidedDocumentStatus.value = "Recognizing document text"
+                _activeModelName.value = "ML Kit document OCR"
+                val result = OcrHelper.recognize(
+                    corrected,
+                    preference = _instantTextScript.value,
+                    minimumTextLength = 2,
+                )
+                val text = result.text.trim()
+                _isAnalyzing.value = false
+                guidedDocumentSnapshotRequested.set(false)
+                if (text.isBlank()) {
+                    _guidedDocumentStatus.value = "No text found. Adjust the page and try Capture"
+                    guidedDocumentCandidate = null
+                    guidedDocumentStableCount = 0
+                    stopProcessing()
+                    announceAction("No text found. Adjust the page and try Capture.")
+                    return@launch
+                }
+
+                _documentMode.value = DocumentMode.IMAGE
+                _totalPages.value = 1
+                _currentPage.value = 0
+                _documentText.value = text
+                _objectDescription.value = text
+                _guidedDocumentEnabled.value = false
+                _guidedDocumentStatus.value = "Document captured"
+                guidedDocumentCandidate = null
+                guidedDocumentStableCount = 0
+                speakText(text)
+            } catch (error: Exception) {
+                Log.e(TAG, "Guided document capture failed", error)
+                _isAnalyzing.value = false
+                guidedDocumentSnapshotRequested.set(false)
+                _guidedDocumentStatus.value = "Unable to capture. Guided scan is still active"
+                stopProcessing()
+                announceAction("Unable to capture the document. Guided scan is still active.")
+            } finally {
+                if (corrected !== bitmap) corrected?.recycle()
+                bitmap.recycle()
+            }
+        }
+    }
+
+    fun guidedDocumentSnapshotFailed() {
+        guidedDocumentSnapshotRequested.set(false)
+        guidedDocumentCandidate = null
+        guidedDocumentStableCount = 0
+        _guidedDocumentStatus.value = "Capture failed. Hold steady or use Capture again"
+        announceAction("Document capture failed. Hold steady or use Capture again.")
+    }
+
+    fun analyzeInstantTextFrame(imageProxy: ImageProxy) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!_instantTextEnabled.value || _instantTextPaused.value ||
+            instantSnapshotRequested.get() || instantSpeechActive ||
+            now - lastInstantTextFrameMillis < 850 ||
+            !instantTextInFlight.compareAndSet(false, true)
+        ) {
+            imageProxy.close()
+            return
+        }
+        lastInstantTextFrameMillis = now
+
+        val bitmap = try {
+            // CameraX handles YUV rowStride/pixelStride differences here. The older
+            // custom conversion assumes tightly packed NV21 and can produce a
+            // decodable but unusable image on devices such as the Xiaomi 14T Pro.
+            val source = imageProxy.toBitmap()
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            if (now - lastInstantFrameDiagnosticMillis >= 5_000) {
+                lastInstantFrameDiagnosticMillis = now
+                Log.d(
+                    TAG,
+                    "Instant frame format=${imageProxy.format} source=${source.width}x${source.height} " +
+                        "rotation=$rotation planes=${imageProxy.planes.joinToString { "${it.rowStride}/${it.pixelStride}" }}",
+                )
+            }
+            imageProxy.close()
+            rotateBitmapIfNeeded(source, rotation)
+        } catch (error: Exception) {
+            imageProxy.close()
+            instantTextInFlight.set(false)
+            Log.w(TAG, "Instant frame conversion failed", error)
+            null
+        }
+        if (bitmap == null) {
+            instantTextInFlight.set(false)
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val result = OcrHelper.recognize(
+                    bitmap,
+                    preference = _instantTextScript.value,
+                    minimumTextLength = 2,
+                )
+                Log.d(
+                    TAG,
+                    "Instant OCR chars=${result.text.length} lines=${result.lines.size} " +
+                        "script=${result.script ?: "none"} confidence=${result.confidence} " +
+                        "latencyMs=${result.processingTimeMillis}",
+                )
+                if (_instantTextEnabled.value && !_instantTextPaused.value) {
+                    applyInstantTextResult(result, bitmap)
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "Instant text OCR failed", error)
+                _instantTextStatus.value = "Waiting for a clear image"
+            } finally {
+                bitmap.recycle()
+                instantTextInFlight.set(false)
+            }
+        }
+    }
+
+    private fun applyInstantTextResult(result: com.google.ai.edge.gallery.ui.echosense.StructuredOcrResult, bitmap: Bitmap) {
+        val text = result.text.trim()
+        if (text.length < 2) {
+            instantEmptyResultCount++
+            instantTextCandidate = ""
+            instantTextCandidateCount = 0
+            _instantTextStatus.value = "Looking for text"
+            val imageIssue = VisualUtilityAnalyzer.textCaptureIssue(bitmap)
+            if (imageIssue != null) {
+                announceInstantCaptureIssueIfNeeded(imageIssue)
+            } else if (instantEmptyResultCount >= 3) {
+                announceInstantCaptureIssueIfNeeded(
+                    "No text detected. Center printed text in the view and hold the phone steady.",
+                )
+            }
+            return
+        }
+
+        instantEmptyResultCount = 0
+        instantGuidanceCandidate = ""
+        instantGuidanceCandidateCount = 0
+        val normalized = normalizeInstantText(text)
+        if (textSimilarity(normalized, instantTextCandidate) >= 0.78) {
+            instantTextCandidateCount++
+        } else {
+            instantTextCandidate = normalized
+            instantTextCandidateCount = 1
+        }
+        val scriptSuffix = result.script?.let { ", $it" }.orEmpty()
+        _instantTextStatus.value =
+            if (instantTextCandidateCount >= 2) "Text recognized$scriptSuffix" else "Hold steady"
+        if (instantTextCandidateCount < 2 ||
+            textSimilarity(normalized, normalizeInstantText(lastSpokenInstantText)) >= 0.88
+        ) return
+
+        requestInstantTextSnapshot(text)
+    }
+
+    private fun requestInstantTextSnapshot(fallbackText: String) {
+        if (!instantSnapshotRequested.compareAndSet(false, true)) return
+        instantSnapshotFallbackText = fallbackText
+        _instantTextStatus.value = "Hold steady. Capturing text"
+        viewModelScope.launch(Dispatchers.Main) {
+            val callback = instantTextCaptureCallback
+            if (callback == null || !_instantTextEnabled.value) {
+                instantSnapshotRequested.set(false)
+                return@launch
+            }
+            callback()
+        }
+    }
+
+    fun analyzeInstantTextSnapshot(imageProxy: ImageProxy) {
+        if (!_instantTextEnabled.value || !instantSnapshotRequested.get()) {
+            imageProxy.close()
+            instantSnapshotRequested.set(false)
+            return
+        }
+        val bitmap = try {
+            val source = imageProxy.toBitmap()
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            imageProxy.close()
+            rotateBitmapIfNeeded(source, rotation)
+        } catch (error: Exception) {
+            imageProxy.close()
+            Log.w(TAG, "Instant still capture conversion failed", error)
+            null
+        }
+        if (bitmap == null) {
+            speakCapturedInstantText(instantSnapshotFallbackText)
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val capturedText = try {
+                OcrHelper.recognize(
+                    bitmap,
+                    preference = _instantTextScript.value,
+                    minimumTextLength = 2,
+                ).text.trim()
+            } catch (error: Exception) {
+                Log.w(TAG, "Instant still OCR failed", error)
+                ""
+            } finally {
+                bitmap.recycle()
+            }
+            speakCapturedInstantText(
+                if (capturedText.length >= 2) capturedText else instantSnapshotFallbackText,
+            )
+        }
+    }
+
+    fun instantTextSnapshotCaptureFailed() {
+        if (!instantSnapshotRequested.get()) return
+        Log.w(TAG, "Instant still capture failed; using stable live OCR result")
+        speakCapturedInstantText(instantSnapshotFallbackText)
+    }
+
+    private fun speakCapturedInstantText(text: String) {
+        val normalized = normalizeInstantText(text)
+        if (textSimilarity(normalized, normalizeInstantText(lastSpokenInstantText)) >= 0.88) {
+            instantSnapshotRequested.set(false)
+            _instantTextStatus.value = "Scanning for new text"
+            return
+        }
+        _documentMode.value = DocumentMode.IMAGE
+        _documentText.value = text
+        _objectDescription.value = text
+        lastSpokenInstantText = text
+        instantSpeechActive = true
+        _instantTextStatus.value = "Reading captured text"
+        speakText(text)
+    }
+
+    private fun announceInstantCaptureIssueIfNeeded(issue: String?) {
+        if (issue == null) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (issue == instantGuidanceCandidate) {
+            instantGuidanceCandidateCount++
+        } else {
+            instantGuidanceCandidate = issue
+            instantGuidanceCandidateCount = 1
+        }
+        if (instantGuidanceCandidateCount < 3 || now - lastInstantGuidanceMillis < 12_000) return
+        lastInstantGuidanceMillis = now
+        instantGuidanceCandidateCount = 0
+        instantSpeechActive = true
+        _instantTextStatus.value = issue
+        speakText(issue)
+    }
+
+    override fun onSpeechOutputComplete() {
+        if (instantSpeechActive) {
+            instantSpeechActive = false
+            instantSnapshotRequested.set(false)
+            instantTextCandidate = ""
+            instantTextCandidateCount = 0
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(900)
+                if (_instantTextEnabled.value) {
+                    _instantTextStatus.value =
+                        if (_instantTextPaused.value) "Paused on recognized text" else "Scanning for new text"
+                }
+            }
+        }
+        if (guidedDocumentSpeechActive) {
+            guidedDocumentSpeechActive = false
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(600)
+                if (_guidedDocumentEnabled.value) {
+                    _guidedDocumentStatus.value = "Looking for a complete page"
+                }
+            }
+        }
+    }
+
+    private fun normalizeInstantText(text: String): String =
+        text.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    private fun textSimilarity(leftText: String, rightText: String): Double {
+        if (leftText.isEmpty() || rightText.isEmpty()) return 0.0
+        if (leftText == rightText) return 1.0
+        val left = leftText.split(" ").filter { it.isNotEmpty() }.toSet()
+        val right = rightText.split(" ").filter { it.isNotEmpty() }.toSet()
+        val union = left union right
+        return if (union.isEmpty()) 0.0 else (left intersect right).size.toDouble() / union.size
     }
 
     fun identifyCenterColor(imageProxy: ImageProxy) {
@@ -445,6 +1019,8 @@ class DocumentReaderViewModel @Inject constructor(
 
 
     fun stopReading() {
+        stopInstantText(announce = false)
+        stopGuidedDocumentCapture(announce = false)
         ttsPlayer.stop()
         stopProcessing()
     }
@@ -461,6 +1037,8 @@ class DocumentReaderViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        stopInstantText(announce = false)
+        stopGuidedDocumentCapture(announce = false)
         closePdf()
         super.onCleared()
     }

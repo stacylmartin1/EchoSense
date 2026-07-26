@@ -11,6 +11,8 @@ The iOS app is written in SwiftUI and shares the EchoSense workflow and model ca
 - **Safety** combines object detection with synchronized LiDAR range data on supported iPhones, identifies broad wall-like surfaces, and falls back to camera-relative proximity estimates.
 - **Currency** identifies visible bank notes.
 - **Read** extracts text from the camera, photos, and imported documents, reads it aloud,
+  and offers Guided Scan with spoken page-edge guidance, automatic stable-page capture,
+  perspective correction, image enhancement, and a manual capture fallback.
   identifies the approximate center color, reports the camera-relative light level, and
   scans common barcodes and QR codes entirely on-device. Its accessible Magnifier provides
   zoom, freeze, flashlight, contrast, inversion, and grayscale controls.

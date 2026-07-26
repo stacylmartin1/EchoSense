@@ -69,6 +69,7 @@ abstract class EchoSenseBaseViewModel(
 
     protected val ttsPlayer = NativeTtsQueuePlayer(application, onAllComplete = {
         viewModelScope.launch {
+            onSpeechOutputComplete()
             if (promptOnlineAfterSpeech.getAndSet(false)) {
                 AppSettings.recordSuccessfulLocalAnalysis(application)
             }
@@ -180,6 +181,9 @@ abstract class EchoSenseBaseViewModel(
      * @return The full prompt string to send to the LLM alongside the captured image.
      */
     abstract fun getAnalysisPrompt(customPrompt: String?, isVerbose: Boolean): String
+
+    /** Called after speech queued through [speakText] has fully completed. */
+    protected open fun onSpeechOutputComplete() {}
 
     /**
      * Called when LLM analysis (OCR) completes with the full extracted text.
