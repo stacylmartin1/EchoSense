@@ -39,9 +39,13 @@ jobs:
     steps:
       - name: Checkout the source code
         uses: actions/checkout@v6
+      - name: Install CocoaPods 1.16.2
+        run: gem install cocoapods -v 1.16.2 --no-document
       - name: Install CocoaPods dependencies
-        run: pod install --deployment
+        run: pod _1.16.2_ install --deployment
       - name: Build
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
         run: >-
           xcodebuild
           -workspace EchoSenseiOS.xcworkspace
