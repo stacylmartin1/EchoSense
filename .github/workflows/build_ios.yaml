@@ -12,37 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build Android APK
+name: Build iOS App
 
 on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
     paths:
-      - 'Android/**'
-      - '.github/workflows/build_android.yaml'
+      - 'EchoSenseiOS/**'
+      - '.github/workflows/build_ios.yaml'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'Android/**'
-      - '.github/workflows/build_android.yaml'
+      - 'EchoSenseiOS/**'
+      - '.github/workflows/build_ios.yaml'
 
 jobs:
-  build_apk:
-    name: Build Android APK
-    runs-on: ubuntu-latest
+  build_ios:
+    name: Build iOS App
+    runs-on: macos-26
     permissions:
       contents: read
     defaults:
       run:
-        working-directory: ./Android
+        working-directory: ./EchoSenseiOS
     steps:
       - name: Checkout the source code
         uses: actions/checkout@v6
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      - name: Build and test
-        run: ./gradlew --no-daemon assembleRelease testDebugUnitTest
+      - name: Install CocoaPods dependencies
+        run: pod install --deployment
+      - name: Build
+        run: >-
+          xcodebuild
+          -workspace EchoSenseiOS.xcworkspace
+          -scheme EchoSenseiOS
+          -configuration Debug
+          -destination 'generic/platform=iOS'
+          CODE_SIGNING_ALLOWED=NO
+          build
