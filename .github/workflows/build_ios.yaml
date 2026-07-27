@@ -44,6 +44,8 @@ jobs:
       - name: Install CocoaPods dependencies
         run: pod _1.16.2_ install --deployment
       - name: Build
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
         run: >-
           xcodebuild
           -workspace EchoSenseiOS.xcworkspace
