@@ -31,11 +31,11 @@ android {
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.terranet.echosense.android"
+    applicationId = "com.terranettechnologies.echosense"
     minSdk = 31
     targetSdk = 35
-    versionCode = 17
-    versionName = "1.0.9"
+    versionCode = 18
+    versionName = "1.1.0"
     ndk {
       abiFilters.add("arm64-v8a")
     }

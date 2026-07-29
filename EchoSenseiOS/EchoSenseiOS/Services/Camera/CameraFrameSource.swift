@@ -151,6 +151,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
       connection.videoRotationAngle = 90
     }
     session.commitConfiguration()
+    configureFocus(camera, forMagnifier: false)
 
     let depthAvailable = outputSynchronizer != nil
     DispatchQueue.main.async {
@@ -213,7 +214,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
         let center = CGPoint(x: 0.5, y: 0.5)
         if camera.isFocusPointOfInterestSupported {
           camera.focusPointOfInterest = center
-          if camera.isFocusModeSupported(.autoFocus) {
+          if camera.isFocusModeSupported(.continuousAutoFocus) {
+            camera.focusMode = .continuousAutoFocus
+          } else if camera.isFocusModeSupported(.autoFocus) {
             camera.focusMode = .autoFocus
           }
         }
@@ -227,6 +230,67 @@ final class CameraFrameSource: NSObject, ObservableObject {
       } catch {
         // Continuous camera operation is still preferable to failing the scan.
       }
+    }
+  }
+
+  func setMagnifierMode(enabled: Bool) {
+    sessionQueue.async {
+      guard let camera = (self.session.inputs.first as? AVCaptureDeviceInput)?.device else {
+        return
+      }
+      self.configureFocus(camera, forMagnifier: enabled)
+      if !enabled {
+        self.setZoomFactor(1, on: camera)
+      }
+    }
+  }
+
+  func setMagnifierZoom(_ factor: CGFloat) {
+    sessionQueue.async {
+      guard let camera = (self.session.inputs.first as? AVCaptureDeviceInput)?.device else {
+        return
+      }
+      self.setZoomFactor(factor, on: camera)
+    }
+  }
+
+  private func configureFocus(_ camera: AVCaptureDevice, forMagnifier: Bool) {
+    do {
+      try camera.lockForConfiguration()
+      defer { camera.unlockForConfiguration() }
+
+      let center = CGPoint(x: 0.5, y: 0.5)
+      if camera.isFocusPointOfInterestSupported {
+        camera.focusPointOfInterest = center
+      }
+      if camera.isSmoothAutoFocusSupported {
+        camera.isSmoothAutoFocusEnabled = !forMagnifier
+      }
+      if camera.isAutoFocusRangeRestrictionSupported {
+        camera.autoFocusRangeRestriction = forMagnifier ? .near : .none
+      }
+      if camera.isFocusModeSupported(.continuousAutoFocus) {
+        camera.focusMode = .continuousAutoFocus
+      } else if camera.isFocusModeSupported(.autoFocus) {
+        camera.focusMode = .autoFocus
+      }
+    } catch {
+      // Preserve the live camera if a device does not accept a focus preference.
+    }
+  }
+
+  private func setZoomFactor(_ requestedFactor: CGFloat, on camera: AVCaptureDevice) {
+    let factor = min(
+      max(requestedFactor, camera.minAvailableVideoZoomFactor),
+      min(camera.maxAvailableVideoZoomFactor, 8)
+    )
+    do {
+      try camera.lockForConfiguration()
+      camera.cancelVideoZoomRamp()
+      camera.videoZoomFactor = factor
+      camera.unlockForConfiguration()
+    } catch {
+      // The preview remains usable at the current zoom factor.
     }
   }
 

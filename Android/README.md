@@ -54,16 +54,16 @@ Open `Android` in Android Studio to run the `app` configuration on a connected d
 
 Select the checked-in **EchoSense** run configuration after opening the project.
 
-The installed Android application ID is `com.terranet.echosense.android`. Builds that used the
-legacy Google package ID are treated by Android as a different app; uninstall
-`com.google.aiedge.gallery` once before installing this version. Its private settings and downloaded
-models do not migrate automatically, so the model must be downloaded or imported again.
+The installed Android application ID is `com.terranettechnologies.echosense`. Builds that used
+`com.terranet.echosense.android` or the legacy Google package ID are treated by Android as different
+apps. Their private settings and downloaded models do not migrate automatically, so the model must
+be downloaded or imported again.
 
 If Android Studio tries to launch the legacy Gallery application ID or opens the deleted
 `Android/src` project root, it is using a stale deployment model. Open `Android`, choose
 **File → Sync Project with Gradle Files**, select the **EchoSense** run configuration, and run
 again. The correct component is
-`com.terranet.echosense.android/com.terranet.echosense.android.MainActivity`.
+`com.terranettechnologies.echosense/com.terranet.echosense.android.MainActivity`.
 
 Run local unit tests with:
 
@@ -118,9 +118,9 @@ Android/
 └── settings.gradle.kts               EchoSense Gradle project definition
 ```
 
-The Kotlin namespace and installed application ID both use
-`com.terranet.echosense.android`. Keeping them aligned avoids ambiguity in generated classes,
-manifest components, logs, and Android Studio run configurations.
+The Kotlin namespace remains `com.terranet.echosense.android`, while the installed application ID
+is `com.terranettechnologies.echosense`. This separation preserves stable source packages while
+using the final Google Play identity for installs, manifest authorities, and app-scoped storage.
 
 ## Privacy and model licensing
 

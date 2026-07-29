@@ -43,5 +43,5 @@ object Category {
   val CLASSICAL_ML = CategoryInfo(id = "classical_ml", labelStringRes = R.string.category_llm)
   val EXPERIMENTAL =
     CategoryInfo(id = "experimental", labelStringRes = R.string.category_experimental)
-  val ECHOSENSE = CategoryInfo(id = "echosense", label = "EchoSense")
+  val ECHOSENSE = CategoryInfo(id = "echosense", label = "EchoSense-AI")
 }

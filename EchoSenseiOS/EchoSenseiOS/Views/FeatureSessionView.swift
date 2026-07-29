@@ -35,6 +35,7 @@ struct FeatureSessionView: View {
   @State private var showingMagnifier = false
   @State private var magnifierZoom = 2.0
   @State private var magnifierFrozenImage: UIImage?
+  @State private var magnifierFrozenZoom = 1.0
   @State private var magnifierHighContrast = false
   @State private var magnifierInverted = false
   @State private var magnifierGrayscale = false
@@ -47,7 +48,6 @@ struct FeatureSessionView: View {
         assistantView
       } else {
         previewLayer
-          .scaleEffect(showingMagnifier ? magnifierZoom : 1)
           .contrast(showingMagnifier && magnifierHighContrast ? 1.8 : 1)
           .grayscale(showingMagnifier && magnifierGrayscale ? 1 : 0)
           .modifier(OptionalColorInvert(enabled: showingMagnifier && magnifierInverted))
@@ -60,7 +60,7 @@ struct FeatureSessionView: View {
               .resizable()
               .scaledToFill()
               .frame(width: geometry.size.width, height: geometry.size.height)
-              .scaleEffect(magnifierZoom)
+              .scaleEffect(magnifierZoom / magnifierFrozenZoom)
               .contrast(magnifierHighContrast ? 1.8 : 1)
               .grayscale(magnifierGrayscale ? 1 : 0)
               .modifier(OptionalColorInvert(enabled: magnifierInverted))
@@ -76,6 +76,7 @@ struct FeatureSessionView: View {
             viewModel: viewModel,
             zoom: $magnifierZoom,
             frozenImage: $magnifierFrozenImage,
+            frozenZoom: $magnifierFrozenZoom,
             highContrast: $magnifierHighContrast,
             inverted: $magnifierInverted,
             grayscale: $magnifierGrayscale,
@@ -120,7 +121,14 @@ struct FeatureSessionView: View {
       if magnifierTorchEnabled {
         viewModel.setMagnifierTorch(enabled: false)
       }
+      if showingMagnifier {
+        viewModel.setMagnifierMode(enabled: false)
+      }
       viewModel.onDisappear()
+    }
+    .onChange(of: magnifierZoom) { _, newZoom in
+      guard showingMagnifier, magnifierFrozenImage == nil else { return }
+      viewModel.setMagnifierZoom(newZoom)
     }
     .onChange(of: settings.selectedDetector) { oldValue, newValue in
       viewModel.reloadDetector(model: newValue)
@@ -263,7 +271,7 @@ struct FeatureSessionView: View {
             LazyVStack(spacing: 12) {
               if viewModel.assistantMessages.isEmpty {
                 ContentUnavailableView(
-                  "Ask EchoSense",
+                  "Ask EchoSense-AI",
                   systemImage: "bubble.left.and.bubble.right",
                   description: Text("Type or speak a question, or attach an image, PDF, or text document.")
                 )
@@ -580,7 +588,7 @@ struct FeatureSessionView: View {
         }
         .buttonStyle(IconCaptionButtonStyle())
         .accessibilityLabel("Settings")
-        .accessibilityHint("Opens EchoSense settings.")
+        .accessibilityHint("Opens EchoSense-AI settings.")
       }
       .padding(.horizontal, 10)
       .padding(.top, 8)
@@ -841,11 +849,14 @@ struct FeatureSessionView: View {
     Button {
       magnifierFrozenImage = nil
       magnifierZoom = 2
+      magnifierFrozenZoom = 1
       magnifierHighContrast = false
       magnifierInverted = false
       magnifierGrayscale = false
       magnifierTorchEnabled = false
       showingMagnifier = true
+      viewModel.setMagnifierMode(enabled: true)
+      viewModel.setMagnifierZoom(magnifierZoom)
     } label: {
       iconLabel(systemName: "plus.magnifyingglass", title: "Magnify")
     }
@@ -858,6 +869,7 @@ struct FeatureSessionView: View {
   private func closeMagnifier() {
     magnifierTorchEnabled = false
     viewModel.setMagnifierTorch(enabled: false)
+    viewModel.setMagnifierMode(enabled: false)
     magnifierFrozenImage = nil
     showingMagnifier = false
   }

@@ -268,7 +268,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
   }
 
   private fun buildCloudPrompt(assistantId: Long): String = buildString {
-    append("You are EchoSense Assistant. Answer helpfully and directly. Maintain the conversation context.\n")
+    append("You are EchoSense-AI Assistant. Answer helpfully and directly. Maintain the conversation context.\n")
     if (documentText.isNotBlank()) append("Attached document:\n${documentText.take(MAX_DOCUMENT_CHARS)}\n\n")
     append("Conversation:\n")
     _messages.value.filter { it.id != assistantId }.takeLast(12).forEach {

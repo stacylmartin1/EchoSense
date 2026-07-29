@@ -388,6 +388,14 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     camera.setTorch(enabled: enabled)
   }
 
+  func setMagnifierMode(enabled: Bool) {
+    camera.setMagnifierMode(enabled: enabled)
+  }
+
+  func setMagnifierZoom(_ factor: Double) {
+    camera.setMagnifierZoom(CGFloat(factor))
+  }
+
   private func runVisualUtility<Result>(
     stage: String,
     analyze: (UIImage) -> Result?,
@@ -864,7 +872,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     let imageContext = assistantAttachmentImage == nil ? "" :
       "\nAn image is attached. Use it when answering relevant questions."
     return """
-    You are EchoSense Assistant, a concise, helpful assistant designed to work well with screen readers. Answer the user's latest request while using the conversation history and any attachment. Clearly state uncertainty. Do not claim that visual or document analysis is perfectly reliable. Use plain text and complete sentences.
+    You are EchoSense-AI Assistant, a concise, helpful assistant designed to work well with screen readers. Answer the user's latest request while using the conversation history and any attachment. Clearly state uncertainty. Do not claim that visual or document analysis is perfectly reliable. Use plain text and complete sentences.
     \(imageContext)\(documentContext)
 
     <CONVERSATION>

@@ -22,6 +22,7 @@ struct MagnifierView: View {
 
   @Binding var zoom: Double
   @Binding var frozenImage: UIImage?
+  @Binding var frozenZoom: Double
   @Binding var highContrast: Bool
   @Binding var inverted: Bool
   @Binding var grayscale: Bool
@@ -71,10 +72,12 @@ struct MagnifierView: View {
             selected: frozenImage != nil
           ) {
             if frozenImage == nil {
+              frozenZoom = zoom
               frozenImage = viewModel.captureMagnifierFrame()
               announce(frozenImage == nil ? "Camera frame is not ready." : "Image frozen.")
             } else {
               frozenImage = nil
+              viewModel.setMagnifierZoom(zoom)
               announce("Live image resumed.")
             }
           }
