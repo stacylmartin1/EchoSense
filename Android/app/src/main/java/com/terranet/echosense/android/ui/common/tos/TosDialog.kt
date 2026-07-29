@@ -93,11 +93,11 @@ private val ECHOSENSE_TERMS_AND_PRIVACY =
   """
   ## Terms and safety notice
 
-  EchoSense provides experimental visual, document, translation, currency, and navigation assistance. The app can make mistakes, miss hazards, hallucinate descriptions, mistranslate text, misread documents, or identify currency incorrectly.
+  EchoSense-AI provides experimental visual, document, translation, currency, and navigation assistance. The app can make mistakes, miss hazards, hallucinate descriptions, mistranslate text, misread documents, or identify currency incorrectly.
 
-  **Do not rely on EchoSense as your only source of safety-critical information.** Vision assistance and collision avoidance are not a substitute for a cane, guide dog, sighted assistance, mobility training, traffic signals, medical devices, emergency services, or your own judgment.
+  **Do not rely on EchoSense-AI as your only source of safety-critical information.** Vision assistance and collision avoidance are not a substitute for a cane, guide dog, sighted assistance, mobility training, traffic signals, medical devices, emergency services, or your own judgment.
 
-  Do not rely on EchoSense for:
+  Do not rely on EchoSense-AI for:
 
   - personal safety, navigation safety, traffic decisions, obstacle avoidance, or emergency response;
   - legal, medical, financial, immigration, insurance, tax, or other professional advice;
@@ -111,13 +111,13 @@ private val ECHOSENSE_TERMS_AND_PRIVACY =
 
   ## Privacy notice
 
-  EchoSense is designed primarily for on-device processing. Camera frames, selected photos, selected documents, microphone input for voice commands, OCR text, translations, and model outputs are processed on your device when local models and local Android services are used.
+  EchoSense-AI is designed primarily for on-device processing. Camera frames, selected photos, selected documents, microphone input for voice commands, OCR text, translations, and model outputs are processed on your device when local models and local Android services are used.
 
   The app may access the camera, microphone, files you choose, and downloaded or bundled model files only to provide the features you request. Camera preview and analysis frames are not intentionally saved by the app unless you explicitly choose files or platform components cache data as part of normal operation.
 
   Some features may use Google or Android services:
 
-  - Safety depth sensing uses Google Play Services for AR (ARCore), which is provided by Google LLC and governed by the [Google Privacy Policy](https://policies.google.com/privacy). ARCore is optional; EchoSense falls back to camera-only estimates when it is unavailable.
+  - Safety depth sensing uses Google Play Services for AR (ARCore), which is provided by Google LLC and governed by the [Google Privacy Policy](https://policies.google.com/privacy). ARCore is optional; EchoSense-AI falls back to camera-only estimates when it is unavailable.
   - ML Kit OCR, language identification, and translation may use Google Play services or download language/model packs.
   - If you connect and use an online AI provider, the images, document text, prompts, and related content needed for that request are sent directly to the selected provider and handled under that provider's terms. Provider charges may apply.
   - Android system text-to-speech, speech recognition, camera, audio, and accessibility services are provided by the device or OS vendor and may have their own settings and privacy behavior.
@@ -127,5 +127,5 @@ private val ECHOSENSE_TERMS_AND_PRIVACY =
 
   ## No warranty
 
-  EchoSense is provided as-is, without warranties of accuracy, availability, fitness for a particular purpose, or non-infringement. To the maximum extent permitted by law, the app developers and contributors are not liable for losses or damages arising from your use of the app or reliance on its outputs.
+  EchoSense-AI is provided as-is, without warranties of accuracy, availability, fitness for a particular purpose, or non-infringement. To the maximum extent permitted by law, the app developers and contributors are not liable for losses or damages arising from your use of the app or reliance on its outputs.
   """.trimIndent()

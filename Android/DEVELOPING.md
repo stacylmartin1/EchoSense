@@ -11,9 +11,9 @@ code has been retained where it is still used, while the old Gallery home, model
 model-detail, benchmark, and generic chat pages have been removed. All active application source
 now uses the `com.terranet.echosense.android` namespace.
 
-The Kotlin namespace and installed application ID are both
-`com.terranet.echosense.android`. Do not reintroduce the legacy Gallery application ID in Gradle
-configuration, manifest authorities, intents, or runtime lookups.
+The Kotlin namespace is `com.terranet.echosense.android`, while the installed application ID is
+`com.terranettechnologies.echosense`. Do not reintroduce the legacy Gallery application ID in
+Gradle configuration, manifest authorities, intents, or runtime lookups.
 
 Large language models are not bundled. Users download Gemma 4 E2B or E4B from public pinned model
 URLs or import a compatible `.litertlm` file from Settings.

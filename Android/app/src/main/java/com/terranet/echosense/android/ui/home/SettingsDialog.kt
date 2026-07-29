@@ -516,9 +516,9 @@ private data class LicenseNotice(
 private val THIRD_PARTY_LICENSE_NOTICES =
   listOf(
     LicenseNotice(
-      name = "Google AI Edge Gallery and EchoSense app code",
+      name = "Google AI Edge Gallery and EchoSense-AI app code",
       license = "Apache License 2.0",
-      notice = "The application code is based on Google AI Edge Gallery and EchoSense modifications. Copyright notices are retained in source files.",
+      notice = "The application code is based on Google AI Edge Gallery and EchoSense-AI modifications. Copyright notices are retained in source files.",
     ),
     LicenseNotice(
       name = "Gemma 4 LiteRT-LM model assets",
