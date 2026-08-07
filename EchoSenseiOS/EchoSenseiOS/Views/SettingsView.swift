@@ -116,9 +116,10 @@ struct SettingsView: View {
         Section("Online Analysis") {
           LabeledContent("Status", value: settings.isCloudConnected ? "Connected" : "Not connected")
           if settings.isCloudConnected {
-            LabeledContent("Provider", value: settings.cloudProvider.displayName)
+            LabeledContent("Provider", value: settings.cloudProvider.legalName)
             LabeledContent("Key", value: settings.maskedCloudKey)
             LabeledContent("Usage", value: settings.cloudUsageMode.displayName)
+            LabeledContent("Consent", value: settings.cloudConsentGranted ? "Granted" : "Not granted")
           }
           Button(settings.isCloudConnected ? "Manage Online Analysis" : "Connect AI Provider") {
             showingCloudSetup = true
@@ -190,6 +191,7 @@ struct CloudConnectionView: View {
   @State private var apiKey = ""
   @State private var isTesting = false
   @State private var errorMessage: String?
+  @State private var hasAcknowledgedDataSharing = false
 
   var body: some View {
     NavigationStack {
@@ -230,11 +232,23 @@ struct CloudConnectionView: View {
         }
 
         Section("Privacy and cost") {
-          Text("When online analysis is used, the current image and prompt are sent directly to \(provider.displayName). Your API key stays in this device's secure keychain. Provider usage may incur charges on your account.")
+          Text("If you allow online AI, EchoSense-AI sends data directly to \(provider.legalName) to generate the analysis or assistant response you request.")
             .font(.footnote)
-          Text("Do not use online analysis for sensitive documents or information unless you accept the provider's data practices.")
+          Text("Depending on the feature, the data sent may include camera images, selected photos, document text, typed or spoken prompts, recent conversation context, and relevant object or depth observations. Your API key is sent to \(provider.legalName) for authentication and is stored on this device in Keychain.")
             .font(.footnote)
             .foregroundStyle(.secondary)
+          Text("On-device analysis remains available if you do not consent. Provider usage may incur charges on your account.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+          if let providerPrivacyURL = provider.privacyPolicyURL {
+            Link("View \(provider.legalName) Privacy Policy", destination: providerPrivacyURL)
+          }
+          Link("View EchoSense-AI Privacy Policy", destination: LegalLinks.appPrivacyPolicyURL)
+          Toggle(
+            "I allow EchoSense-AI to share the data described above with \(provider.legalName) for online AI processing.",
+            isOn: $hasAcknowledgedDataSharing
+          )
+          .accessibilityHint("Required before EchoSense-AI contacts this provider.")
         }
 
         if let errorMessage {
@@ -248,10 +262,22 @@ struct CloudConnectionView: View {
             if isTesting {
               HStack { ProgressView(); Text("Testing connection…") }
             } else {
-              Text(needsKeyValidation ? "Test and Save" : "Save Preference")
+              Text(needsKeyValidation ? "Allow, Test, and Connect" : "Allow and Save")
             }
           }
-          .disabled(isTesting || (needsKeyValidation && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+          .disabled(
+            isTesting ||
+            !hasAcknowledgedDataSharing ||
+            (needsKeyValidation && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          )
+
+          if settings.isCloudConnected, settings.cloudConsentGranted {
+            Button("Withdraw Online AI Consent") {
+              settings.withdrawCloudConsent()
+              hasAcknowledgedDataSharing = false
+              usageMode = .askBeforeUse
+            }
+          }
 
           if settings.isCloudConnected {
             Button("Remove Connection", role: .destructive) {
@@ -269,9 +295,14 @@ struct CloudConnectionView: View {
         if settings.isCloudConnected {
           provider = settings.cloudProvider
           usageMode = settings.cloudUsageMode
+          hasAcknowledgedDataSharing = settings.cloudConsentGranted
         }
       }
-      .onChange(of: provider) { _, _ in errorMessage = nil }
+      .onChange(of: provider) { _, newProvider in
+        errorMessage = nil
+        hasAcknowledgedDataSharing =
+          settings.cloudConsentGranted && newProvider == settings.cloudProvider
+      }
       .onChange(of: apiKey) { _, _ in errorMessage = nil }
     }
   }
@@ -289,7 +320,12 @@ struct CloudConnectionView: View {
         if needsKeyValidation {
           try await CloudVisionClient(provider: provider, apiKey: key).validateKey()
         }
-        try settings.saveCloudConnection(provider: provider, apiKey: key, usageMode: usageMode)
+        try settings.saveCloudConnection(
+          provider: provider,
+          apiKey: key,
+          usageMode: usageMode,
+          consentGranted: hasAcknowledgedDataSharing
+        )
         dismiss()
       } catch {
         errorMessage = error.localizedDescription

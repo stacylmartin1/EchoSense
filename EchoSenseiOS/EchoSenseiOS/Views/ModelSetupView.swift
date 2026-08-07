@@ -37,6 +37,11 @@ struct ModelSetupView: View {
             .foregroundStyle(.secondary)
         }
 
+        Text("The model file is downloaded from Hugging Face. Hugging Face and its content-delivery providers receive standard network information such as your IP address and download request. After download, images, documents, and prompts analyzed by this model stay on this device and are not sent to Hugging Face or Google.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+
         if modelDownloads.availableModels.count > 1 {
           Picker("AI model", selection: Binding(
             get: { modelDownloads.selectedModelID },

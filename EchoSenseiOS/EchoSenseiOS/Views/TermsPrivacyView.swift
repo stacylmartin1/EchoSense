@@ -16,6 +16,12 @@
 
 import SwiftUI
 
+enum LegalLinks {
+  static let appPrivacyPolicyURL = URL(
+    string: "https://github.com/stacylmartin1/EchoSense/blob/main/PRIVACY_POLICY.txt"
+  )!
+}
+
 struct TermsPrivacyView: View {
   @Binding var acceptedTerms: Bool
   var viewingMode = false
@@ -23,9 +29,12 @@ struct TermsPrivacyView: View {
   var body: some View {
     NavigationStack {
       ScrollView {
-        Text(Self.text)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding()
+        VStack(alignment: .leading, spacing: 16) {
+          Text(Self.text)
+          Link("View Full Privacy Policy", destination: LegalLinks.appPrivacyPolicyURL)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
       }
       .navigationTitle("Terms and Privacy")
       .toolbar {
@@ -48,9 +57,12 @@ struct TermsPrivacyView: View {
 
   EchoSense-AI is designed primarily for on-device processing. Camera frames, selected photos, selected documents, microphone input for voice commands, OCR text, translations, and model outputs are processed on your device when local models and local system services are used.
 
-  Some features may use Apple, Google, Android, or configured cloud AI services depending on your settings and installed components. Do not scan highly sensitive documents, credentials, financial information, medical information, private keys, or confidential content unless you understand which local and online services are active and accept the risk.
+  Optional online AI is disabled unless you connect and explicitly allow Google LLC (Gemini) or OpenAI, L.L.C. Depending on the feature, EchoSense-AI may then send that provider camera images, selected photos, document text, typed or spoken prompts, recent conversation context, relevant object or depth observations, and your API key for authentication. This data is used to generate the online analysis or assistant response you request. You can decline and continue using on-device analysis, or withdraw consent in Settings.
+
+  Downloaded Gemma models run on this device. Downloading a model contacts Hugging Face and its content-delivery providers, which receive standard network information such as your IP address and download request; camera images, documents, and prompts are not sent to Hugging Face or Google for on-device inference.
+
+  Some local system features may use Apple services depending on device settings and installed components. Do not scan highly sensitive documents, credentials, financial information, medical information, private keys, or confidential content unless you understand which local and online services are active and accept the risk.
 
   EchoSense-AI is provided as-is, without warranties of accuracy, availability, fitness for a particular purpose, or non-infringement.
   """
 }
-

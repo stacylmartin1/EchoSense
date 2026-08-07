@@ -45,12 +45,15 @@ enum AssistantModelMode: String {
 
 enum AssistantChatError: LocalizedError {
   case onlineProviderNotConnected
+  case onlineConsentRequired
   case internetUnavailable
 
   var errorDescription: String? {
     switch self {
     case .onlineProviderNotConnected:
       "Connect an online provider before using online chat."
+    case .onlineConsentRequired:
+      "Allow online AI data sharing in Settings, or choose On-device to continue."
     case .internetUnavailable:
       "Online chat is unavailable while this device is offline. Choose On-device to continue."
     }
@@ -176,7 +179,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     if feature == .assistant, !hasInitializedAssistantModelMode {
       hasInitializedAssistantModelMode = true
       assistantModelMode =
-        settings.isCloudConnected && settings.cloudUsageMode == .preferOnline
+        settings.isCloudConnected && settings.cloudConsentGranted &&
+        settings.cloudUsageMode == .preferOnline
         ? .online
         : .onDevice
     }
@@ -851,6 +855,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
 
   private func runAssistantCloud(prompt: String, settings: AppSettings) async throws -> String {
     guard settings.isCloudConnected else { throw CloudVisionError.invalidKey }
+    guard settings.cloudConsentGranted else { throw AssistantChatError.onlineConsentRequired }
     guard isNetworkAvailable else { throw AssistantChatError.internetUnavailable }
     activeModelName = settings.cloudProvider.displayName
     analysisStage = "Generating online"

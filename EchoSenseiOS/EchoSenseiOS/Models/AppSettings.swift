@@ -46,6 +46,22 @@ enum CloudProvider: String, CaseIterable, Identifiable {
     }
   }
 
+  var legalName: String {
+    switch self {
+    case .none: "No provider"
+    case .gemini: "Google LLC (Gemini)"
+    case .openAICompatible: "OpenAI, L.L.C."
+    }
+  }
+
+  var privacyPolicyURL: URL? {
+    switch self {
+    case .none: nil
+    case .gemini: URL(string: "https://policies.google.com/privacy")
+    case .openAICompatible: URL(string: "https://openai.com/policies/privacy-policy/")
+    }
+  }
+
   var keyCreationURL: URL? {
     switch self {
     case .none: nil
@@ -81,6 +97,8 @@ enum CloudUsageMode: String, CaseIterable, Identifiable {
 
 @MainActor
 final class AppSettings: ObservableObject {
+  private static let currentCloudConsentVersion = 1
+
   @Published var responseStyle: ResponseStyle {
     didSet { UserDefaults.standard.set(responseStyle.rawValue, forKey: Keys.responseStyle) }
   }
@@ -139,7 +157,9 @@ final class AppSettings: ObservableObject {
     cloudAPIKey = secureKey
     cloudProvider = secureKey.isEmpty ? .none : savedProvider
     cloudUsageMode = CloudUsageMode(rawValue: defaults.string(forKey: Keys.cloudUsageMode) ?? "") ?? .askBeforeUse
-    cloudConsentGranted = defaults.bool(forKey: Keys.cloudConsentGranted)
+    cloudConsentGranted =
+      defaults.bool(forKey: Keys.cloudConsentGranted) &&
+      defaults.integer(forKey: Keys.cloudConsentVersion) == Self.currentCloudConsentVersion
     selectedDetector = ObjectDetectorModel(rawValue: defaults.string(forKey: Keys.selectedDetector) ?? "") ?? .yolo
   }
 
@@ -150,15 +170,27 @@ final class AppSettings: ObservableObject {
     return "••••\(cloudAPIKey.suffix(4))"
   }
 
-  func saveCloudConnection(provider: CloudProvider, apiKey: String, usageMode: CloudUsageMode) throws {
+  func saveCloudConnection(
+    provider: CloudProvider,
+    apiKey: String,
+    usageMode: CloudUsageMode,
+    consentGranted: Bool
+  ) throws {
     let normalized = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard provider != .none, !normalized.isEmpty else { return }
+    guard provider != .none, !normalized.isEmpty, consentGranted else { return }
     try CloudKeychain.save(normalized)
     cloudAPIKey = normalized
     cloudProvider = provider
     cloudUsageMode = usageMode
-    if usageMode != .askBeforeUse { cloudConsentGranted = true }
+    cloudConsentGranted = true
+    UserDefaults.standard.set(Self.currentCloudConsentVersion, forKey: Keys.cloudConsentVersion)
     dismissCloudPrompt()
+  }
+
+  func withdrawCloudConsent() {
+    cloudConsentGranted = false
+    cloudUsageMode = .askBeforeUse
+    UserDefaults.standard.removeObject(forKey: Keys.cloudConsentVersion)
   }
 
   func removeCloudConnection() {
@@ -167,6 +199,7 @@ final class AppSettings: ObservableObject {
     cloudProvider = .none
     cloudUsageMode = .askBeforeUse
     cloudConsentGranted = false
+    UserDefaults.standard.removeObject(forKey: Keys.cloudConsentVersion)
   }
 
   func recordSuccessfulLocalAnalysis() {
@@ -194,6 +227,7 @@ final class AppSettings: ObservableObject {
     static let cloudAPIKey = "echosense.cloudAPIKey"
     static let cloudUsageMode = "echosense.cloudUsageMode"
     static let cloudConsentGranted = "echosense.cloudConsentGranted"
+    static let cloudConsentVersion = "echosense.cloudConsentVersion"
     static let cloudPromptDismissed = "echosense.cloudPromptDismissed"
     static let selectedDetector = "echosense.selectedDetector"
   }
