@@ -29,7 +29,6 @@ struct FeatureSessionView: View {
   @State private var pendingPreferredAnalysisPrompt: String?
   @State private var showingAssistantImporter = false
   @State private var assistantPhotoItem: PhotosPickerItem?
-  @State private var confirmingAssistantOnline = false
   @State private var pendingAssistantOnlineSelection = false
   @State private var assistantFollowsLatest = true
   @State private var showingMagnifier = false
@@ -48,10 +47,14 @@ struct FeatureSessionView: View {
         assistantView
       } else {
         previewLayer
+          .scaleEffect(
+            showingMagnifier && magnifierFrozenImage == nil ? magnifierZoom : 1
+          )
           .contrast(showingMagnifier && magnifierHighContrast ? 1.8 : 1)
           .grayscale(showingMagnifier && magnifierGrayscale ? 1 : 0)
           .modifier(OptionalColorInvert(enabled: showingMagnifier && magnifierInverted))
           .ignoresSafeArea()
+          .clipped()
           .accessibilityHidden(true)
 
         if showingMagnifier, let magnifierFrozenImage {
@@ -126,10 +129,6 @@ struct FeatureSessionView: View {
       }
       viewModel.onDisappear()
     }
-    .onChange(of: magnifierZoom) { _, newZoom in
-      guard showingMagnifier, magnifierFrozenImage == nil else { return }
-      viewModel.setMagnifierZoom(newZoom)
-    }
     .onChange(of: settings.selectedDetector) { oldValue, newValue in
       viewModel.reloadDetector(model: newValue)
     }
@@ -140,7 +139,7 @@ struct FeatureSessionView: View {
       }
       Button("Not Now", role: .cancel) { settings.dismissCloudPrompt() }
     } message: {
-      Text("Connect your own AI provider for optional online scene analysis. Your key stays on this device.")
+      Text("Connect your own AI provider for optional online scene analysis. Your key is stored in Keychain and sent only to the provider you explicitly allow for authentication.")
     }
     .alert(
       "Use \(settings.cloudProvider.displayName) Analysis?",
@@ -155,8 +154,8 @@ struct FeatureSessionView: View {
     } message: {
       Text(
         pendingPreferredAnalysisPrompt == nil
-          ? "The current image and prompt will be sent to \(settings.cloudProvider.displayName). Provider charges may apply. Use on-device to keep them on this device."
-          : "Your voice request and current image will be sent to \(settings.cloudProvider.displayName). Provider charges may apply. Use on-device to keep them on this device."
+          ? "The current image, prompt, and relevant object or depth observations will be sent to \(settings.cloudProvider.legalName) for this analysis. Provider charges may apply. Use on-device to keep them on this device."
+          : "Your voice request, current image, and relevant object or depth observations will be sent to \(settings.cloudProvider.legalName) for this analysis. Provider charges may apply. Use on-device to keep them on this device."
       )
     }
     .confirmationDialog(
@@ -172,19 +171,6 @@ struct FeatureSessionView: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("Automatic detects the script. Choosing a language can reduce false matches and improve recognition.")
-    }
-    .confirmationDialog(
-      "Use \(settings.cloudProvider.displayName) for chat?",
-      isPresented: $confirmingAssistantOnline,
-      titleVisibility: .visible
-    ) {
-      Button("Use Online") {
-        settings.cloudConsentGranted = true
-        viewModel.setAssistantModelMode(.online)
-      }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("Your messages and any attached image or document will be sent to \(settings.cloudProvider.displayName). Provider charges may apply.")
     }
     .sheet(isPresented: $showingCloudSetup, onDismiss: finishPendingAssistantOnlineSelection) {
       CloudConnectionView()
@@ -471,7 +457,8 @@ struct FeatureSessionView: View {
     if settings.cloudConsentGranted {
       viewModel.setAssistantModelMode(.online)
     } else {
-      confirmingAssistantOnline = true
+      pendingAssistantOnlineSelection = true
+      showingCloudSetup = true
     }
   }
 
@@ -481,8 +468,6 @@ struct FeatureSessionView: View {
     guard settings.isCloudConnected, viewModel.isNetworkAvailable else { return }
     if settings.cloudConsentGranted {
       viewModel.setAssistantModelMode(.online)
-    } else {
-      confirmingAssistantOnline = true
     }
   }
 
@@ -791,7 +776,6 @@ struct FeatureSessionView: View {
     hasPendingPreferredAnalysis = false
     pendingPreferredAnalysisPrompt = nil
     if forceOnline {
-      settings.cloudConsentGranted = true
       viewModel.analyze(settings: settings, customPrompt: customPrompt, forceOnline: true)
     } else {
       viewModel.analyze(settings: settings, customPrompt: customPrompt, forceLocal: true)
@@ -856,7 +840,6 @@ struct FeatureSessionView: View {
       magnifierTorchEnabled = false
       showingMagnifier = true
       viewModel.setMagnifierMode(enabled: true)
-      viewModel.setMagnifierZoom(magnifierZoom)
     } label: {
       iconLabel(systemName: "plus.magnifyingglass", title: "Magnify")
     }

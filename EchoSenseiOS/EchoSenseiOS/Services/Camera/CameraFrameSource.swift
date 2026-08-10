@@ -239,18 +239,10 @@ final class CameraFrameSource: NSObject, ObservableObject {
         return
       }
       self.configureFocus(camera, forMagnifier: enabled)
-      if !enabled {
-        self.setZoomFactor(1, on: camera)
-      }
-    }
-  }
-
-  func setMagnifierZoom(_ factor: CGFloat) {
-    sessionQueue.async {
-      guard let camera = (self.session.inputs.first as? AVCaptureDeviceInput)?.device else {
-        return
-      }
-      self.setZoomFactor(factor, on: camera)
+      // Magnifier zoom is applied to the preview and frozen image consistently.
+      // Keep the capture device at 1× because some depth-camera formats ignore or
+      // constrain hardware zoom, and a hardware factor would double the UI scale.
+      self.setZoomFactor(1, on: camera)
     }
   }
 

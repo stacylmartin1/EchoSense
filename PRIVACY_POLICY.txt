@@ -51,16 +51,31 @@ directly to the provider you selected. Depending on the request, this may includ
 an image, document text, typed or spoken prompts, recent conversation context,
 and relevant sensor observations.
 
-The currently supported providers may include Google Gemini and OpenAI. Content
+The currently supported providers are Google LLC (Gemini) and OpenAI, L.L.C. Content
 sent to a provider is governed by that provider's terms, privacy policy, account
 settings, and data-retention practices. The provider may charge your account for
 use of its service.
 
+On iOS, before EchoSense-AI contacts an online AI provider, the app identifies the
+selected provider, lists the categories of data that may be sent, explains the
+purpose, and asks for explicit permission. Declining does not prevent use of
+on-device analysis. You can withdraw permission at any time in Settings under
+Online Analysis. After permission is withdrawn, EchoSense-AI does not send new AI
+requests to the provider unless you grant permission again.
+
+If you choose to obtain an API key, EchoSense-AI opens the selected provider's
+website only after this disclosure is accepted. The provider and its website or
+content-delivery services receive standard network information such as your IP
+address, device or browser information, request time, and pages requested. Account
+details or other information you enter there are provided directly to the selected
+provider and are governed by that provider's privacy policy.
+
 EchoSense-AI stores a user-provided provider credential using the platform's secure
 credential storage, such as iOS Keychain or Android encrypted credential storage.
-The credential is not intended to be included in application logs or committed
-to the EchoSense-AI source repository. You can remove the online connection and its
-stored credential from the app's Settings.
+The credential is sent to the selected provider only for authentication. It is not
+intended to be included in application logs or committed to the EchoSense-AI source
+repository. You can remove the online connection and its stored credential from
+the app's Settings.
 
 4. CAMERA, MICROPHONE, PHOTOS, AND FILES
 
@@ -135,6 +150,10 @@ needed to provide a feature you request, such as with a selected online AI
 provider, model host, operating-system service, speech service, translation
 service, ARCore, crash-reporting service, or application-distribution platform.
 
+Any third party with which EchoSense-AI shares user data is required to provide
+the same or equal protection of user data as described in this Privacy Policy and
+required by the Apple App Review Guidelines and applicable law.
+
 EchoSense-AI may also disclose information when required by law or when reasonably
 necessary to protect users, the public, legal rights, or the security and
 integrity of the application.
@@ -184,4 +203,3 @@ contact provided on the EchoSense-AI application-store listing or the official
 EchoSense-AI distribution page. Questions about information processed by Apple,
 Google, OpenAI, Hugging Face, a device manufacturer, or another third-party
 service should be directed to that provider.
-

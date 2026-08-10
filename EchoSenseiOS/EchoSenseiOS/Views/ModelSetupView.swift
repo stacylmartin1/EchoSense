@@ -20,77 +20,110 @@ import UIKit
 struct ModelSetupView: View {
   @EnvironmentObject private var modelDownloads: ModelDownloadManager
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   let allowsDeferral: Bool
 
   var body: some View {
     NavigationStack {
-      VStack(spacing: 24) {
-        Image(systemName: "brain.head.profile")
-          .font(.system(size: 64))
-          .foregroundStyle(.tint)
+      ScrollView {
+        VStack(spacing: 24) {
+          Image(systemName: "brain.head.profile")
+            .font(.system(size: 64))
+            .foregroundStyle(.tint)
 
-        VStack(spacing: 8) {
-          Text("Download On-Device AI")
-            .font(.title.bold())
-          Text("Choose a Gemma 4 model for private, on-device visual assistance. No account is required.")
-            .multilineTextAlignment(.center)
+          VStack(spacing: 8) {
+            Text(modelDownloads.installedModelURL == nil ? "Download On-Device AI" : "Manage On-Device AI")
+              .font(.title.bold())
+              .multilineTextAlignment(.center)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity)
+            Text("Choose a Gemma 4 model for private, on-device visual assistance. No account is required.")
+              .multilineTextAlignment(.center)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity)
+          }
+          .frame(maxWidth: .infinity)
+
+          Text("The model file is downloaded from Hugging Face. Hugging Face and its content-delivery providers receive standard network information such as your IP address and download request. After download, images, documents, and prompts analyzed by this model stay on this device and are not sent to Hugging Face or Google.")
+            .font(.footnote)
             .foregroundStyle(.secondary)
-        }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
 
-        if modelDownloads.availableModels.count > 1 {
-          Picker("AI model", selection: Binding(
-            get: { modelDownloads.selectedModelID },
-            set: { modelDownloads.selectModel(id: $0) }
-          )) {
-            ForEach(modelDownloads.availableModels) { model in
-              Text(model.displayName).tag(model.id)
+          if modelDownloads.availableModels.count > 1 {
+            if dynamicTypeSize.isAccessibilitySize {
+              Picker("AI model", selection: selectedModelBinding) {
+                modelPickerOptions
+              }
+              .pickerStyle(.menu)
+              .frame(maxWidth: .infinity)
+              .disabled(isDownloadActive)
+            } else {
+              Picker("AI model", selection: selectedModelBinding) {
+                modelPickerOptions
+              }
+              .pickerStyle(.segmented)
+              .disabled(isDownloadActive)
             }
           }
-          .pickerStyle(.segmented)
-          .disabled(isDownloadActive)
-        }
 
-        if let model = modelDownloads.availableModel {
-          Text(model.id.contains("e2b")
-            ? "Smaller and faster · \(formattedSize(model.sizeBytes))"
-            : "More capable, with higher memory use · \(formattedSize(model.sizeBytes))")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-
-        if modelDownloads.phase == .downloading || modelDownloads.phase == .paused || modelDownloads.phase == .verifying {
-          VStack(spacing: 8) {
-            ProgressView(value: modelDownloads.progress)
-            Text(modelDownloads.statusText)
+          if let model = modelDownloads.availableModel {
+            Text(model.id.contains("e2b")
+              ? "Smaller and faster · \(formattedSize(model.sizeBytes))"
+              : "More capable, with higher memory use · \(formattedSize(model.sizeBytes))")
               .font(.callout)
               .foregroundStyle(.secondary)
+              .multilineTextAlignment(.center)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity)
           }
-        }
 
-        if let error = modelDownloads.errorMessage {
-          Text(error)
-            .font(.callout)
-            .foregroundStyle(.red)
-            .multilineTextAlignment(.center)
-        }
+          if modelDownloads.phase == .downloading || modelDownloads.phase == .paused || modelDownloads.phase == .verifying {
+            VStack(spacing: 8) {
+              ProgressView(value: modelDownloads.progress)
+              Text(modelDownloads.statusText)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+          }
 
-        Toggle("Allow cellular data", isOn: $modelDownloads.allowsCellularDownload)
+          if let error = modelDownloads.errorMessage {
+            Text(error)
+              .font(.callout)
+              .foregroundStyle(.red)
+              .multilineTextAlignment(.center)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity)
+          }
 
-        controls
+          Toggle(isOn: $modelDownloads.allowsCellularDownload) {
+            Text("Allow cellular data")
+              .fixedSize(horizontal: false, vertical: true)
+          }
 
-        if let licenseURL = modelDownloads.availableModel?.licenseURL {
-          Link("View model license", destination: licenseURL)
-            .font(.footnote)
-        }
+          controls
+
+          if let licenseURL = modelDownloads.availableModel?.licenseURL {
+            Link("View model license", destination: licenseURL)
+              .font(.footnote)
+          }
 
 #if DEBUG
-        Button("Copy Download Diagnostics") {
-          UIPasteboard.general.string = modelDownloads.downloadDiagnosticReport
-        }
-        .font(.footnote)
+          Button("Copy Download Diagnostics") {
+            UIPasteboard.general.string = modelDownloads.downloadDiagnosticReport
+          }
+          .font(.footnote)
 #endif
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 24)
       }
-      .padding(24)
       .navigationTitle("AI Model")
       .task { await modelDownloads.refreshCatalog() }
     }
@@ -113,7 +146,13 @@ struct ModelSetupView: View {
       Button("Continue") { dismiss() }
         .buttonStyle(.borderedProminent)
     default:
-      Button(downloadButtonTitle) { Task { await modelDownloads.startDownload() } }
+      Button {
+        Task { await modelDownloads.startDownload() }
+      } label: {
+        Text(downloadButtonTitle)
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: .infinity)
+      }
         .buttonStyle(.borderedProminent)
         .disabled(modelDownloads.availableModel == nil)
       if allowsDeferral {
@@ -125,6 +164,19 @@ struct ModelSetupView: View {
 
   private var isDownloadActive: Bool {
     modelDownloads.phase == .downloading || modelDownloads.phase == .paused || modelDownloads.phase == .verifying
+  }
+
+  private var selectedModelBinding: Binding<String> {
+    Binding(
+      get: { modelDownloads.selectedModelID },
+      set: { modelDownloads.selectModel(id: $0) }
+    )
+  }
+
+  @ViewBuilder private var modelPickerOptions: some View {
+    ForEach(modelDownloads.availableModels) { model in
+      Text(model.displayName).tag(model.id)
+    }
   }
 
   private var downloadButtonTitle: String {

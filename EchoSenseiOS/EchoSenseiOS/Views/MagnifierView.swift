@@ -72,12 +72,13 @@ struct MagnifierView: View {
             selected: frozenImage != nil
           ) {
             if frozenImage == nil {
-              frozenZoom = zoom
+              // Live magnification is a display transform, so retain the same
+              // visible scale when switching to the captured frame.
+              frozenZoom = 1
               frozenImage = viewModel.captureMagnifierFrame()
               announce(frozenImage == nil ? "Camera frame is not ready." : "Image frozen.")
             } else {
               frozenImage = nil
-              viewModel.setMagnifierZoom(zoom)
               announce("Live image resumed.")
             }
           }

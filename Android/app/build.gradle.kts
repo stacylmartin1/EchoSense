@@ -28,12 +28,13 @@ plugins {
 
 android {
   namespace = "com.terranet.echosense.android"
-  compileSdk = 35
+  compileSdk = 36
+  compileSdkMinor = 1
 
   defaultConfig {
     applicationId = "com.terranettechnologies.echosense"
     minSdk = 31
-    targetSdk = 35
+    targetSdk = 36
     versionCode = 18
     versionName = "1.1.0"
     ndk {
