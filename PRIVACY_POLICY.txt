@@ -63,6 +63,13 @@ on-device analysis. You can withdraw permission at any time in Settings under
 Online Analysis. After permission is withdrawn, EchoSense-AI does not send new AI
 requests to the provider unless you grant permission again.
 
+If you choose to obtain an API key, EchoSense-AI opens the selected provider's
+website only after this disclosure is accepted. The provider and its website or
+content-delivery services receive standard network information such as your IP
+address, device or browser information, request time, and pages requested. Account
+details or other information you enter there are provided directly to the selected
+provider and are governed by that provider's privacy policy.
+
 EchoSense-AI stores a user-provided provider credential using the platform's secure
 credential storage, such as iOS Keychain or Android encrypted credential storage.
 The credential is sent to the selected provider only for authentication. It is not

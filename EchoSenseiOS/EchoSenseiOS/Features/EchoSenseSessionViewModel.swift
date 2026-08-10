@@ -396,10 +396,6 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     camera.setMagnifierMode(enabled: enabled)
   }
 
-  func setMagnifierZoom(_ factor: Double) {
-    camera.setMagnifierZoom(CGFloat(factor))
-  }
-
   private func runVisualUtility<Result>(
     stage: String,
     analyze: (UIImage) -> Result?,

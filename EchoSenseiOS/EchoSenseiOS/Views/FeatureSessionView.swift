@@ -47,10 +47,14 @@ struct FeatureSessionView: View {
         assistantView
       } else {
         previewLayer
+          .scaleEffect(
+            showingMagnifier && magnifierFrozenImage == nil ? magnifierZoom : 1
+          )
           .contrast(showingMagnifier && magnifierHighContrast ? 1.8 : 1)
           .grayscale(showingMagnifier && magnifierGrayscale ? 1 : 0)
           .modifier(OptionalColorInvert(enabled: showingMagnifier && magnifierInverted))
           .ignoresSafeArea()
+          .clipped()
           .accessibilityHidden(true)
 
         if showingMagnifier, let magnifierFrozenImage {
@@ -124,10 +128,6 @@ struct FeatureSessionView: View {
         viewModel.setMagnifierMode(enabled: false)
       }
       viewModel.onDisappear()
-    }
-    .onChange(of: magnifierZoom) { _, newZoom in
-      guard showingMagnifier, magnifierFrozenImage == nil else { return }
-      viewModel.setMagnifierZoom(newZoom)
     }
     .onChange(of: settings.selectedDetector) { oldValue, newValue in
       viewModel.reloadDetector(model: newValue)
@@ -840,7 +840,6 @@ struct FeatureSessionView: View {
       magnifierTorchEnabled = false
       showingMagnifier = true
       viewModel.setMagnifierMode(enabled: true)
-      viewModel.setMagnifierZoom(magnifierZoom)
     } label: {
       iconLabel(systemName: "plus.magnifyingglass", title: "Magnify")
     }
