@@ -61,6 +61,8 @@ struct TermsPrivacyView: View {
 
   Downloaded Gemma models run on this device. Downloading a model contacts Hugging Face and its content-delivery providers, which receive standard network information such as your IP address and download request; camera images, documents, and prompts are not sent to Hugging Face or Google for on-device inference.
 
+  On-device document translation is powered by Google Translate through Google ML Kit. Language models are downloaded from Google as needed, normally over Wi-Fi, and then translation runs on the device. Model downloads share standard network information with Google but do not send the text being translated. Machine translations can be inaccurate. Google provides no warranties for translation accuracy, reliability, merchantability, fitness for a particular purpose, or non-infringement.
+
   Some local system features may use Apple services depending on device settings and installed components. Do not scan highly sensitive documents, credentials, financial information, medical information, private keys, or confidential content unless you understand which local and online services are active and accept the risk.
 
   EchoSense-AI is provided as-is, without warranties of accuracy, availability, fitness for a particular purpose, or non-infringement.

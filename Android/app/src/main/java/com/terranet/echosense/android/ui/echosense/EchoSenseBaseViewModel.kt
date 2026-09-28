@@ -200,6 +200,13 @@ abstract class EchoSenseBaseViewModel(
     /** Whether this ViewModel uses the camera. */
     open val supportsCamera: Boolean = true
 
+    /**
+     * Whether raw model tokens may be shown and spoken as they arrive. Features such as
+     * currency identification disable this so a structured, unvalidated model response is
+     * never announced before deterministic post-processing.
+     */
+    protected open val streamsAnalysisToUser: Boolean = true
+
     // ---- Public API ----
 
     fun setModel(model: Model) {
@@ -453,7 +460,7 @@ abstract class EchoSenseBaseViewModel(
             if (srcBitmap != null) {
                 val rotation = try { imageProxy.imageInfo.rotationDegrees } catch (e: Exception) { 0 }
                 val rotated = rotateBitmapIfNeeded(srcBitmap, rotation)
-                bitmap = scaleBitmapToMaxSize(rotated, LLM_MAX_IMAGE_SIZE)
+                bitmap = rotated
                 Log.d(TAG, "Bitmap created: src=${srcBitmap.width}x${srcBitmap.height}, rotation=${rotation}, final=${bitmap.width}x${bitmap.height}")
                 // Close camera buffer immediately after extracting bitmap to avoid gralloc unlock* warnings
                 try {
@@ -618,20 +625,24 @@ abstract class EchoSenseBaseViewModel(
 
                             if (partialResult.isNotEmpty()) {
                                 llmTextBuffer.append(partialResult)
-                                _objectDescription.value = llmTextBuffer.toString()
-                                sentenceChunker.onToken(partialResult)
-                                drainChunkerToTts()
+                                if (streamsAnalysisToUser) {
+                                    _objectDescription.value = llmTextBuffer.toString()
+                                    sentenceChunker.onToken(partialResult)
+                                    drainChunkerToTts()
+                                }
                             }
 
                             if (done) {
                                 _isAnalyzing.value = false
                                 inferenceJob = null
-                                sentenceChunker.onDone()
-                                drainChunkerToTts()
                                 val finalText = llmTextBuffer.toString()
                                 Log.d(TAG, "LLM analysis complete, final text: '$finalText'")
-                                promptOnlineAfterSpeech.set(finalText.isNotBlank())
-                                ttsPlayer.markInputComplete()
+                                if (streamsAnalysisToUser) {
+                                    sentenceChunker.onDone()
+                                    drainChunkerToTts()
+                                    promptOnlineAfterSpeech.set(finalText.isNotBlank())
+                                    ttsPlayer.markInputComplete()
+                                }
                                 onAnalysisComplete(finalText)
                             }
                         }
@@ -687,10 +698,12 @@ abstract class EchoSenseBaseViewModel(
             try {
                 val result = OnlineAnalysisHelper.analyzeImage(bitmap, prompt)
                 if (!_isProcessing.value) return@launch
-                _objectDescription.value = result
                 _isAnalyzing.value = false
                 inferenceJob = null
-                speakText(result)
+                if (streamsAnalysisToUser) {
+                    _objectDescription.value = result
+                    speakText(result)
+                }
                 onAnalysisComplete(result)
             } catch (e: CancellationException) {
                 throw e

@@ -85,7 +85,7 @@ fun CurrencyModeScreen(
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val imageCapture = remember {
         ImageCapture.Builder()
-            .setTargetResolution(android.util.Size(768, 768))
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .build()
     }
 
@@ -178,7 +178,12 @@ fun CurrencyModeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Currency Identifier") },
+                title = {
+                    Column {
+                        Text("Currency Identifier")
+                        Text("USD · CAD · EUR · GBP · CHF", style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
+                    }
+                },
             )
         }
     ) { paddingValues ->
