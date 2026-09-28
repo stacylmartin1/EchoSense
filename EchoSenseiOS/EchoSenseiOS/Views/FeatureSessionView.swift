@@ -541,10 +541,21 @@ struct FeatureSessionView: View {
 
       if !viewModel.transcript.isEmpty {
         ScrollView {
-          Text(viewModel.transcript)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .font(.callout)
-            .textSelection(.enabled)
+          VStack(alignment: .leading, spacing: 8) {
+            Text(viewModel.transcript)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .font(.callout)
+              .textSelection(.enabled)
+            if viewModel.feature == .documentTranslator,
+               viewModel.translationPoweredByGoogle {
+              Link(
+                "Powered by Google Translate",
+                destination: URL(string: "https://translate.google.com")!
+              )
+              .font(.caption)
+              .accessibilityLabel("Translation powered by Google Translate")
+            }
+          }
         }
         .frame(maxHeight: 150)
       }

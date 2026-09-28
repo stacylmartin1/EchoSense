@@ -48,11 +48,165 @@ enum Prompts {
     "Extract all text from this image exactly as written. Preserve the original language and formatting. Return only the extracted text."
   }
 
-  static func currency(style: ResponseStyle) -> String {
-    let base = """
-    You are a currency identification assistant for a visually impaired person. Your top priority is to identify the denomination and country of each bank note as fast as possible. Never begin with filler. Start with the denomination number followed by the currency name. Always end with Confidence: HIGH, Confidence: MEDIUM, or Confidence: LOW. If the image is too blurry or does not clearly show currency, respond: Unable to identify. Please hold the note closer and try again. Confidence: LOW
-    """
+  static func currency(evidence: CurrencyOCREvidence) -> String {
+    let supported = CurrencyCatalog.currencies.map { definition in
+      "\(definition.code): \(definition.denominations.sorted().map(String.init).joined(separator: ", "))"
+    }.joined(separator: "; ")
+    return """
+    Inspect the bank note image using the OCR evidence below. Supported bank notes are limited to USD, CAD, EUR, GBP, and CHF.
+    Valid denominations are: \(supported).
 
-    return base + "\nRespond only with denomination, country name, and confidence. If multiple notes are visible, list each on a separate line. Do not describe any other visual features."
+    \(evidence.promptSummary)
+
+    Return exactly one line in this format and no other text:
+    CURRENCY=USD; DENOMINATION=20; IMAGE_USABLE=YES
+
+    Use CURRENCY=UNSUPPORTED when the note is clearly another currency. Use CURRENCY=UNKNOWN and DENOMINATION=0 when uncertain. IMAGE_USABLE must be NO for blur, glare, severe cropping, or when no bank note is visible. Do not invent a denomination from serial numbers or series years.
+    """
+  }
+}
+
+struct CurrencyDefinition {
+  let code: String
+  let name: String
+  let denominations: Set<Int>
+  let issuerPhrases: [String]
+  let denominationWords: [String: Int]
+}
+
+enum CurrencyCatalog {
+  static let currencies: [CurrencyDefinition] = [
+    .init(
+      code: "USD", name: "US Dollars", denominations: [1, 2, 5, 10, 20, 50, 100],
+      issuerPhrases: ["FEDERAL RESERVE NOTE", "UNITED STATES OF AMERICA", "THE UNITED STATES OF AMERICA"],
+      denominationWords: ["ONE HUNDRED": 100, "FIFTY": 50, "TWENTY": 20, "TEN": 10, "FIVE": 5, "TWO": 2, "ONE": 1]
+    ),
+    .init(
+      code: "CAD", name: "Canadian Dollars", denominations: [5, 10, 20, 50, 100],
+      issuerPhrases: ["BANK OF CANADA", "BANQUE DU CANADA"],
+      denominationWords: ["ONE HUNDRED": 100, "FIFTY": 50, "TWENTY": 20, "TEN": 10, "FIVE": 5]
+    ),
+    .init(
+      code: "EUR", name: "Euros", denominations: [5, 10, 20, 50, 100, 200, 500],
+      issuerPhrases: ["EURO"], denominationWords: [:]
+    ),
+    .init(
+      code: "GBP", name: "British Pounds", denominations: [5, 10, 20, 50],
+      issuerPhrases: ["BANK OF ENGLAND"],
+      denominationWords: ["FIFTY POUNDS": 50, "TWENTY POUNDS": 20, "TEN POUNDS": 10, "FIVE POUNDS": 5]
+    ),
+    .init(
+      code: "CHF", name: "Swiss Francs", denominations: [10, 20, 50, 100, 200, 1000],
+      issuerPhrases: ["SCHWEIZERISCHE NATIONALBANK", "BANQUE NATIONALE SUISSE", "BANCA NAZIONALE SVIZZERA", "BANCA NAZIUNALA SVIZRA"],
+      denominationWords: [:]
+    ),
+  ]
+
+  static func definition(for code: String) -> CurrencyDefinition? {
+    currencies.first { $0.code == code.uppercased() }
+  }
+}
+
+struct CurrencyOCREvidence {
+  let rawText: String
+  let countryCodes: Set<String>
+  let denominations: Set<Int>
+  let confidence: Float
+
+  init(result: OCRResult) {
+    rawText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalized = rawText.uppercased().replacingOccurrences(
+      of: "\\s+", with: " ", options: .regularExpression
+    )
+    func phrasePattern(_ phrase: String) -> String {
+      "(?<![A-Z0-9])\(NSRegularExpression.escapedPattern(for: phrase))(?![A-Z0-9])"
+    }
+    let detectedCountryCodes = Set(CurrencyCatalog.currencies.compactMap { definition in
+      definition.issuerPhrases.contains {
+        normalized.range(of: phrasePattern($0), options: .regularExpression) != nil
+      } ? definition.code : nil
+    })
+    countryCodes = detectedCountryCodes
+    let applicable = detectedCountryCodes.isEmpty
+      ? CurrencyCatalog.currencies
+      : CurrencyCatalog.currencies.filter { detectedCountryCodes.contains($0.code) }
+    let allowed = Set(applicable.flatMap(\.denominations))
+    var found = Set(
+      normalized.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        .compactMap(Int.init)
+        .filter(allowed.contains)
+    )
+    var remainingWords = normalized
+    let wordEvidence = applicable
+      .flatMap(\.denominationWords)
+      .sorted { $0.key.count > $1.key.count }
+    for (words, value) in wordEvidence {
+      let pattern = phrasePattern(words)
+      guard remainingWords.range(of: pattern, options: .regularExpression) != nil else { continue }
+      found.insert(value)
+      remainingWords = remainingWords.replacingOccurrences(
+        of: pattern, with: " ", options: .regularExpression
+      )
+    }
+    denominations = found
+    let lineConfidences = result.lines.map(\.confidence).filter { $0 > 0 }
+    confidence = lineConfidences.isEmpty
+      ? 0
+      : lineConfidences.reduce(0, +) / Float(lineConfidences.count)
+  }
+
+  var promptSummary: String {
+    """
+    OCR text:
+    \(String(rawText.prefix(1_200)).isEmpty ? "(none)" : String(rawText.prefix(1_200)))
+    Detected supported currency codes: \(countryCodes.sorted().joined(separator: ", ").isEmpty ? "none" : countryCodes.sorted().joined(separator: ", "))
+    Detected valid denominations: \(denominations.sorted().map(String.init).joined(separator: ", ").isEmpty ? "none" : denominations.sorted().map(String.init).joined(separator: ", "))
+    OCR confidence: \(String(format: "%.2f", confidence))
+    """
+  }
+}
+
+struct CurrencyVisualAssessment {
+  let code: String?
+  let denomination: Int?
+  let imageUsable: Bool
+  let explicitlyUnsupported: Bool
+
+  init?(response: String) {
+    var values: [String: String] = [:]
+    for field in response.uppercased().components(separatedBy: CharacterSet(charactersIn: ";\n")) {
+      let pieces = field.split(separator: "=", maxSplits: 1).map {
+        $0.trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+      if pieces.count == 2 { values[pieces[0]] = pieces[1] }
+    }
+    guard !values.isEmpty else { return nil }
+    let rawCode = values["CURRENCY"]
+    code = (rawCode == "UNKNOWN" || rawCode == "UNSUPPORTED") ? nil : rawCode
+    denomination = values["DENOMINATION"].flatMap { Int($0.filter(\.isNumber)) }
+    imageUsable = values["IMAGE_USABLE"] == "YES"
+    explicitlyUnsupported = rawCode == "UNSUPPORTED"
+  }
+}
+
+enum CurrencyDecision {
+  static func spokenText(evidence: CurrencyOCREvidence, visual: CurrencyVisualAssessment?) -> String {
+    guard let visual, visual.imageUsable else {
+      return "Unable to identify the bank note. Hold it flat, move closer, and try again."
+    }
+    if visual.explicitlyUnsupported {
+      return "This bank note is not one of the supported currencies: US dollars, Canadian dollars, euros, British pounds, or Swiss francs."
+    }
+    guard let code = visual.code, let definition = CurrencyCatalog.definition(for: code) else {
+      return "Unable to identify the bank note. Show the other side and try again."
+    }
+    guard let denomination = visual.denomination,
+          definition.denominations.contains(denomination) else {
+      return "The currency may be \(definition.name), but the denomination is unclear. Show the other side and try again."
+    }
+    guard evidence.countryCodes == [code], evidence.denominations.contains(denomination) else {
+      return "The note may be \(denomination) \(definition.name), but there is not enough matching text to confirm it. Show the other side and try again."
+    }
+    return "\(denomination) \(definition.name)."
   }
 }

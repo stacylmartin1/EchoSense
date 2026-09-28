@@ -44,6 +44,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
   private let depthOutput = AVCaptureDepthDataOutput()
   private var outputSynchronizer: AVCaptureDataOutputSynchronizer?
   private let frameQueue = DispatchQueue(label: "com.echosense.camera.frames", qos: .userInitiated)
+  private let imageContext = CIContext(options: [.cacheIntermediates: false])
   private let deliveryLock = NSLock()
   private var shouldDeliverFrames = false
   private var photoCaptureProcessors: [Int64: PhotoCaptureProcessor] = [:]
@@ -129,6 +130,10 @@ final class CameraFrameSource: NSObject, ObservableObject {
     }
     if session.canAddOutput(photoOutput) {
       session.addOutput(photoOutput)
+      // Photo settings may not request a higher priority than this output prepares for.
+      // Configure the intended maximum before the session starts; capture requests still
+      // read the active maximum defensively in case the session is reconfigured later.
+      photoOutput.maxPhotoQualityPrioritization = .quality
     }
 
     if depthConfigured, session.canAddOutput(depthOutput) {
@@ -195,8 +200,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
   func captureCurrentFrameImage(from sampleBuffer: CMSampleBuffer) -> UIImage? {
     guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
     let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-    let context = CIContext()
-    guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+    guard let cgImage = imageContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
     
     let width = CVPixelBufferGetWidth(imageBuffer)
     let height = CVPixelBufferGetHeight(imageBuffer)
@@ -296,7 +300,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
         }
 
         let settings = AVCapturePhotoSettings()
-        settings.photoQualityPrioritization = .quality
+        settings.photoQualityPrioritization = self.photoOutput.maxPhotoQualityPrioritization
         let identifier = settings.uniqueID
         let processor = PhotoCaptureProcessor { [weak self] result in
           self?.sessionQueue.async {

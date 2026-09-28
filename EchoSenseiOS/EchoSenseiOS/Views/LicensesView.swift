@@ -42,6 +42,7 @@ struct LicensesView: View {
     ("EchoSense-AI app code", "Apache License 2.0", "Application code and EchoSense-AI modifications retain source notices."),
     ("Gemma 4 LiteRT-LM model assets", "Apache License 2.0", "The public LiteRT Community E2B and E4B repositories identify these downloadable artifacts as Apache-2.0 licensed. Imported models remain subject to their own terms."),
     ("MediaPipe Tasks iOS SDK", "Apache License 2.0", "Used for local object detection and local AI task integration."),
+    ("Google ML Kit Translation and Language ID", "Google APIs terms", "On-device translation is powered by Google Translate. Language models are downloaded as needed and translation results may be imperfect."),
     ("EfficientDet Lite object detector", "Apache License 2.0", "Used for collision-avoidance object detection."),
     ("Apple Vision, AVFoundation, Speech, and AVSpeechSynthesizer", "Apple platform terms", "Used for OCR, camera, speech input, and speech output.")
   ]

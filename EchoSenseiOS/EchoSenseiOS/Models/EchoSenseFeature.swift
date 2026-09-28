@@ -40,8 +40,8 @@ enum EchoSenseFeature: String, CaseIterable, Identifiable {
     case .assistant: "Ask questions using text, voice, images, or documents."
     case .navigation: "Describe scenes and announce nearby obstacles."
     case .documentReader: "Read documents aloud from camera or files."
-    case .documentTranslator: "Extract and translate document text."
-    case .currency: "Identify bank notes with confidence."
+    case .documentTranslator: "On-device translation powered by Google Translate; broader support online."
+    case .currency: "Identify USD, CAD, EUR, GBP, and CHF bank notes."
     }
   }
 

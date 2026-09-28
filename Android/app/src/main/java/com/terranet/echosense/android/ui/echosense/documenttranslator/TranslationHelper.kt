@@ -31,12 +31,13 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Singleton managing ML Kit translators and language pack downloads.
- * All translation goes through ML Kit; the LLM is only used for OCR.
+ * Singleton managing the validated offline ML Kit translation path and language packs.
+ * Online translation routing is handled by [DocumentTranslatorViewModel].
  */
 object TranslationHelper {
 
     private const val TAG = "TranslationHelper"
+    private val validatedOfflineLanguages = setOf("en", "es", "fr", "de")
 
     private val _downloadedLanguages = MutableStateFlow<Set<String>>(emptySet())
     val downloadedLanguages: StateFlow<Set<String>> = _downloadedLanguages
@@ -58,12 +59,12 @@ object TranslationHelper {
             }
     }
 
-    /** All languages ML Kit supports, sorted by display name. */
+    /** Languages validated for this app's offline Latin-OCR translation path. */
     fun getAllSupportedLanguages(): List<LanguageInfo> {
-        return TranslateLanguage.getAllLanguages().map { code ->
+        return validatedOfflineLanguages.map { code ->
             LanguageInfo(
                 code = code,
-                displayName = java.util.Locale(code).displayLanguage
+                displayName = java.util.Locale.forLanguageTag(code).displayLanguage
             )
         }.sortedBy { it.displayName }
     }
@@ -74,6 +75,9 @@ object TranslationHelper {
         onSuccess: () -> Unit = {},
         onFailure: (Exception) -> Unit = {}
     ) {
+        require(languageCode in validatedOfflineLanguages) {
+            "Offline translation is not validated for '$languageCode'."
+        }
         _isDownloading.value = _isDownloading.value + languageCode
         val model = TranslateRemoteModel.Builder(languageCode).build()
         val conditions = DownloadConditions.Builder().build()
@@ -197,8 +201,20 @@ object TranslationHelper {
     ): TranslationResult {
         val detectedLang = detectLanguage(text)
 
-        // If already in target language or undetermined, return as-is
-        if (detectedLang == targetLanguage || detectedLang == "und") {
+        if (detectedLang == "und") {
+            throw IllegalStateException(
+                "The source language could not be identified. Try a clearer image or select a supported source language."
+            )
+        }
+        if (detectedLang !in validatedOfflineLanguages) {
+            throw IllegalStateException(
+                "Offline translation currently supports English, Spanish, French, and German. " +
+                    "Use online translation for $detectedLang."
+            )
+        }
+
+        // If already in the target language, return as-is.
+        if (detectedLang == targetLanguage) {
             return TranslationResult(
                 detectedLanguage = detectedLang,
                 translatedText = text,

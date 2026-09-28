@@ -67,7 +67,6 @@ final class LiteRTLMClient: LocalLLMClient, @unchecked Sendable {
 
   #if canImport(LiteRTLM)
   private var engine: Engine?
-  private var conversation: Conversation?
   private let generationLock = NSLock()
   private var activeGenerationID: UUID?
   private var activeGenerationConversation: Conversation?
@@ -87,8 +86,8 @@ final class LiteRTLMClient: LocalLLMClient, @unchecked Sendable {
     #if canImport(LiteRTLM)
     SystemMemoryHelper.logMemoryStatus(stage: "INITIAL load request")
 
-    // Release previous engine and conversation from memory before loading a new one
-    self.conversation = nil
+    // Release the previous engine before loading a new one. Conversations are created only
+    // for active generations so an idle model does not retain an unused KV-cache/session.
     self.engine = nil
     self.isReady = false
     
@@ -123,18 +122,8 @@ final class LiteRTLMClient: LocalLLMClient, @unchecked Sendable {
         let engine = Engine(engineConfig: config)
         
         try await engine.initialize()
-        
-        // Configure sampler config with sensible default hyperparameters
-        let samplerConfig = try SamplerConfig(
-          topK: 64,
-          topP: 0.95,
-          temperature: 1.0
-        )
-        let conversationConfig = ConversationConfig(samplerConfig: samplerConfig)
-        let conversation = try await engine.createConversation(with: conversationConfig)
-        
+
         self.engine = engine
-        self.conversation = conversation
         self.imageInputEnabled = configTuple.imageEnabled
         self.isReady = true
         

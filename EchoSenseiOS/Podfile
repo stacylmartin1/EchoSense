@@ -2,6 +2,8 @@ platform :ios, '17.0'
 
 target 'EchoSenseiOS' do
   use_frameworks!
+  pod 'GoogleMLKit/LanguageID', '8.0.0'
+  pod 'GoogleMLKit/Translate', '8.0.0'
 end
 
 target 'EchoSenseGenAI' do
