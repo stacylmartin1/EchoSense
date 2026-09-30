@@ -78,7 +78,10 @@ enum CurrencyCatalog {
   static let currencies: [CurrencyDefinition] = [
     .init(
       code: "USD", name: "US Dollars", denominations: [1, 2, 5, 10, 20, 50, 100],
-      issuerPhrases: ["FEDERAL RESERVE NOTE", "UNITED STATES OF AMERICA", "THE UNITED STATES OF AMERICA"],
+      issuerPhrases: [
+        "FEDERAL RESERVE", "FEDERAL RESERVE NOTE", "UNITED STATES",
+        "UNITED STATES OF AMERICA", "THE UNITED STATES OF AMERICA"
+      ],
       denominationWords: ["ONE HUNDRED": 100, "FIFTY": 50, "TWENTY": 20, "TEN": 10, "FIVE": 5, "TWO": 2, "ONE": 1]
     ),
     .init(
@@ -195,17 +198,26 @@ enum CurrencyDecision {
       return "Unable to identify the bank note. Hold it flat, move closer, and try again."
     }
     if visual.explicitlyUnsupported {
-      return "This bank note is not one of the supported currencies: US dollars, Canadian dollars, euros, British pounds, or Swiss francs."
+      return "This note was not recognized as a supported currency. Try the other side or improve the lighting."
     }
     guard let code = visual.code, let definition = CurrencyCatalog.definition(for: code) else {
-      return "Unable to identify the bank note. Show the other side and try again."
+      return "This note was not recognized as a supported currency. Try the other side or improve the lighting."
     }
     guard let denomination = visual.denomination,
           definition.denominations.contains(denomination) else {
       return "The currency may be \(definition.name), but the denomination is unclear. Show the other side and try again."
     }
-    guard evidence.countryCodes == [code], evidence.denominations.contains(denomination) else {
-      return "The note may be \(denomination) \(definition.name), but there is not enough matching text to confirm it. Show the other side and try again."
+    let countryAgrees = evidence.countryCodes.contains(code)
+    let denominationAgrees = evidence.denominations.contains(denomination)
+    let countryConflicts = !evidence.countryCodes.isEmpty && !countryAgrees
+    let denominationConflicts = countryAgrees &&
+      !evidence.denominations.isEmpty &&
+      !denominationAgrees
+    if countryConflicts || denominationConflicts {
+      return "The image and printed text do not agree. Show the other side of the note and try again."
+    }
+    if !countryAgrees && !denominationAgrees {
+      return "Likely \(denomination) \(definition.name)."
     }
     return "\(denomination) \(definition.name)."
   }

@@ -120,7 +120,7 @@ class DocumentReaderViewModel @Inject constructor(
             try {
                 val text = app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
                 if (text.isBlank()) {
-                    _error.value = "File is empty"
+                    reportOperationFailure("The selected file is empty.")
                     return@launch
                 }
                 textPages = text.chunked(2000)
@@ -133,7 +133,7 @@ class DocumentReaderViewModel @Inject constructor(
                 speakText(textPages[0])
             } catch (e: Exception) {
                 Log.e(TAG, "Error reading text file", e)
-                _error.value = "Error reading file: ${e.message}"
+                reportOperationFailure("Unable to read the selected file.")
             }
         }
     }
@@ -164,12 +164,12 @@ class DocumentReaderViewModel @Inject constructor(
                     _totalPages.value = pdfRenderer!!.pageCount
                     _currentPage.value = 0
                     _documentMode.value = DocumentMode.PDF_IMAGE
-                    startProcessing()
+                    startProcessing("Reading document")
                     ocrAndSpeakPdfPage(0)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error opening PDF", e)
-                _error.value = "Error opening PDF: ${e.message}"
+                reportOperationFailure("Unable to open the PDF.")
             }
         }
     }
@@ -221,14 +221,14 @@ class DocumentReaderViewModel @Inject constructor(
                     _documentMode.value = DocumentMode.IMAGE
                     _totalPages.value = 1
                     _currentPage.value = 0
-                    startProcessing()
+                    startProcessing("Reading image")
                     ocrAndSpeakBitmap(bitmap)
                 } else {
-                    _error.value = "Could not decode image"
+                    reportOperationFailure("Unable to read the selected image.")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading image", e)
-                _error.value = "Error loading image: ${e.message}"
+                reportOperationFailure("Unable to open the selected image.")
             }
         }
     }
@@ -256,12 +256,12 @@ class DocumentReaderViewModel @Inject constructor(
                 ocrAndSpeakBitmap(bitmap)
             } else {
                 imageProxy.close()
-                _error.value = "Could not process camera image"
+                reportOperationFailure("Unable to process the camera image. Please try again.")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing camera image", e)
             imageProxy.close()
-            _error.value = "Error: ${e.message}"
+            reportOperationFailure("Unable to process the camera image. Please try again.")
         }
     }
 
@@ -857,16 +857,14 @@ class DocumentReaderViewModel @Inject constructor(
                     _isAnalyzing.value = false
                     bitmap.recycle()
                     Log.e(TAG, "Barcode scan failed", error)
-                    _error.value = "Unable to scan the code"
-                    announceAction("Unable to scan the code.")
+                    reportOperationFailure("Unable to scan the code. Please try again.")
                 },
             )
         } catch (error: Exception) {
             imageProxy.close()
             _isAnalyzing.value = false
             Log.e(TAG, "Barcode capture failed", error)
-            _error.value = "Unable to scan the code"
-            announceAction("Unable to scan the code.")
+            reportOperationFailure("Unable to scan the code. Please try again.")
         }
     }
 
@@ -881,8 +879,7 @@ class DocumentReaderViewModel @Inject constructor(
             val bitmap = source?.let { rotateBitmapIfNeeded(it, rotation) }
             val description = bitmap?.let(analyzer)
             if (description == null) {
-                _error.value = "Camera frame is not ready"
-                announceAction("Camera frame is not ready.")
+                reportOperationFailure("The camera frame is not ready. Please try again.")
                 return
             }
             _activeModelName.value = "On-device camera"
@@ -895,8 +892,7 @@ class DocumentReaderViewModel @Inject constructor(
         } catch (error: Exception) {
             imageProxy.close()
             Log.e(TAG, "Camera utility analysis failed", error)
-            _error.value = "Could not analyze the camera image"
-            announceAction("Could not analyze the camera image.")
+            reportOperationFailure("Unable to analyze the camera image. Please try again.")
         }
     }
 
@@ -1037,8 +1033,8 @@ class DocumentReaderViewModel @Inject constructor(
     fun stopReading() {
         stopInstantText(announce = false)
         stopGuidedDocumentCapture(announce = false)
-        ttsPlayer.stop()
         stopProcessing()
+        ttsPlayer.announceStatus("Reading stopped.")
     }
 
     // ── Cleanup ────────────────────────────────────────────────────────

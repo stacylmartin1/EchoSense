@@ -55,10 +55,10 @@ class CurrencyModeViewModel @Inject constructor(
             null
         }
         if (bitmap == null) {
-            _error.value = "Unable to process the currency image."
-            stopProcessing()
+            reportOperationFailure("Unable to process the currency image. Please try again.")
             return
         }
+        Log.d(TAG, "Currency still captured at ${bitmap.width}x${bitmap.height}")
 
         _isAnalyzing.value = true
         _activeModelName.value = "Latin OCR"
@@ -79,6 +79,13 @@ class CurrencyModeViewModel @Inject constructor(
                     minimumTextLength = 1,
                 )
                 pendingEvidence = CurrencyEvidenceExtractor.extract(ocr)
+                Log.d(
+                    TAG,
+                    "Currency OCR: chars=${pendingEvidence.rawText.length}, " +
+                        "codes=${pendingEvidence.countryCodes}, " +
+                        "denominations=${pendingEvidence.denominations}, " +
+                        "confidence=${pendingEvidence.confidence}",
+                )
                 _isAnalyzing.value = false
                 analyzeBitmap(bitmap, promptOverride = currencyFusionPrompt(pendingEvidence))
             } catch (error: Exception) {
@@ -92,6 +99,11 @@ class CurrencyModeViewModel @Inject constructor(
 
     override fun onAnalysisComplete(fullText: String) {
         val visual = CurrencyVisualAssessmentParser.parse(fullText)
+        Log.d(
+            TAG,
+            "Currency vision: code=${visual?.code}, denomination=${visual?.denomination}, " +
+                "usable=${visual?.imageUsable}, unsupported=${visual?.explicitlyUnsupported}",
+        )
         val decision = CurrencyDecisionEngine.decide(pendingEvidence, visual)
         _objectDescription.value = decision.spokenText
         speakText(decision.spokenText)

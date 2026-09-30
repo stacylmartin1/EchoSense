@@ -299,6 +299,54 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     Self.logger.notice("Analyze button pressed; isAnalyzing=\(self.isAnalyzing, privacy: .public)")
     guard !isAnalyzing else { return }
     beginUserInitiatedWork()
+
+    if feature == .currency || feature == .documentTranslator {
+      isAnalyzing = true
+      analysisStage = "Focusing camera for a detailed photo"
+      camera.requestCenterFocus()
+      analysisTask = Task {
+        do {
+          try await Task.sleep(for: .milliseconds(450))
+          try Task.checkCancellation()
+
+          let image: UIImage
+          do {
+            image = try await camera.captureHighQualityPhoto()
+            Self.logger.notice(
+              "Still photo captured: \(Int(image.size.width), privacy: .public)x\(Int(image.size.height), privacy: .public)"
+            )
+          } catch {
+            Self.logger.error("Still photo capture failed; using latest frame: \(error.localizedDescription, privacy: .public)")
+            guard let sampleBuffer = latestSampleBuffer,
+                  let fallbackImage = camera.captureCurrentFrameImage(from: sampleBuffer) else {
+              throw error
+            }
+            image = fallbackImage
+          }
+
+          analysisStage = "Starting analysis task"
+          await analyze(
+            image: image,
+            settings: settings,
+            customPrompt: customPrompt,
+            forceOnline: forceOnline,
+            forceLocal: forceLocal
+          )
+        } catch is CancellationError {
+          isAnalyzing = false
+          analysisStage = ""
+        } catch {
+          isAnalyzing = false
+          analysisStage = ""
+          let message = "Unable to capture a clear image. Hold the phone steady and try again."
+          errorMessage = message
+          speech.announce(message)
+          announceAccessibility(message)
+        }
+      }
+      return
+    }
+
     analysisStage = "Capturing camera frame"
     Self.logger.notice("Converting latest camera frame to UIImage")
     guard let sampleBuffer = latestSampleBuffer,
@@ -1349,13 +1397,20 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     let ocrResult = try await ocrService.recognize(in: image, language: .automatic)
     try Task.checkCancellation()
     let evidence = CurrencyOCREvidence(result: ocrResult)
+    Self.logger.notice(
+      "Currency OCR: chars=\(evidence.rawText.count, privacy: .public), codes=\(evidence.countryCodes.sorted().joined(separator: ","), privacy: .public), denominations=\(evidence.denominations.sorted().map(String.init).joined(separator: ","), privacy: .public), confidence=\(evidence.confidence, privacy: .public)"
+    )
     let prompt = Prompts.currency(evidence: evidence)
     let canUseCloud = settings.isCloudConnected && settings.cloudConsentGranted
 
     func localResponse() async throws -> String {
       analysisStage = "Checking bank note on device"
       activeModelName = "On-device model"
-      let stream = try await localLLM.generate(prompt: prompt, image: image)
+      let stream = try await localLLM.generate(
+        prompt: prompt,
+        image: image,
+        maxImageDimension: 512
+      )
       var response = ""
       for try await chunk in stream {
         try Task.checkCancellation()
@@ -1394,10 +1449,11 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     }
 
     try Task.checkCancellation()
-    let result = CurrencyDecision.spokenText(
-      evidence: evidence,
-      visual: CurrencyVisualAssessment(response: rawResponse)
+    let visual = CurrencyVisualAssessment(response: rawResponse)
+    Self.logger.notice(
+      "Currency vision: code=\(visual?.code ?? "none", privacy: .public), denomination=\(visual?.denomination ?? 0, privacy: .public), usable=\(visual?.imageUsable ?? false, privacy: .public), unsupported=\(visual?.explicitlyUnsupported ?? false, privacy: .public)"
     )
+    let result = CurrencyDecision.spokenText(evidence: evidence, visual: visual)
     transcript = result
     speakResult(result, accessibilitySummary: "Currency analysis complete.")
     await speech.waitUntilFinished()

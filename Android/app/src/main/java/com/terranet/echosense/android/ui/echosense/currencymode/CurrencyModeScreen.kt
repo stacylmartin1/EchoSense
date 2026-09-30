@@ -94,7 +94,10 @@ fun CurrencyModeScreen(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(imageProxy: ImageProxy) { viewModel.analyzeImage(imageProxy) }
-                override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "Capture failed", exception)
+                    viewModel.reportOperationFailure("Unable to capture the bank note. Please try again.")
+                }
             }
         )
     }
@@ -139,7 +142,7 @@ fun CurrencyModeScreen(
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
     }
 
-    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing) {
+    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing, isProcessing) {
         if (modelDownloadStatus != null) {
             viewModel.checkAndAnnounceStatusChanges(
                 modelName = selectedModel.name,
@@ -227,8 +230,7 @@ fun CurrencyModeScreen(
                     label = "Identify",
                     contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Identifying currency" else "Capture and identify bank note",
                     onClick = {
-                        viewModel.startProcessing()
-                        viewModel.announceAction("Identifying currency")
+                        viewModel.startProcessing("Identifying currency")
                         captureAndAnalyze()
                     },
                     enabled = !isAnalyzing && isModelReady,

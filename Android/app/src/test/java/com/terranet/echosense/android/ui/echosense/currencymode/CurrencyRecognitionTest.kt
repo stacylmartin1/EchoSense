@@ -23,7 +23,7 @@ class CurrencyRecognitionTest {
     }
 
     @Test
-    fun `requires OCR country and denomination agreement before identification`() {
+    fun `identifies when OCR country and denomination agree`() {
         val evidence = CurrencyOcrEvidence(
             rawText = "FEDERAL RESERVE NOTE TWENTY 20",
             countryCodes = setOf("USD"),
@@ -38,6 +38,33 @@ class CurrencyRecognitionTest {
 
         assertEquals(CurrencyDecisionKind.IDENTIFIED, decision.kind)
         assertEquals("20 US Dollars.", decision.spokenText)
+    }
+
+    @Test
+    fun `identifies when either OCR country or denomination corroborates vision`() {
+        val countryOnly = CurrencyDecisionEngine.decide(
+            CurrencyOcrEvidence("FEDERAL RESERVE", setOf("USD"), emptySet(), 0.8f),
+            CurrencyVisualAssessment("USD", 20, imageUsable = true, explicitlyUnsupported = false),
+        )
+        val denominationOnly = CurrencyDecisionEngine.decide(
+            CurrencyOcrEvidence("20", emptySet(), setOf(20), 0.8f),
+            CurrencyVisualAssessment("USD", 20, imageUsable = true, explicitlyUnsupported = false),
+        )
+
+        assertEquals(CurrencyDecisionKind.IDENTIFIED, countryOnly.kind)
+        assertEquals("20 US Dollars.", countryOnly.spokenText)
+        assertEquals("20 US Dollars.", denominationOnly.spokenText)
+    }
+
+    @Test
+    fun `reports likely result when OCR has no corroborating evidence`() {
+        val decision = CurrencyDecisionEngine.decide(
+            CurrencyOcrEvidence("", emptySet(), emptySet(), 0f),
+            CurrencyVisualAssessment("USD", 20, imageUsable = true, explicitlyUnsupported = false),
+        )
+
+        assertEquals(CurrencyDecisionKind.IDENTIFIED, decision.kind)
+        assertEquals("Likely 20 US Dollars.", decision.spokenText)
     }
 
     @Test
@@ -59,13 +86,13 @@ class CurrencyRecognitionTest {
     }
 
     @Test
-    fun `rejects out of catalog currency`() {
+    fun `does not call an out of catalog result definitively unsupported`() {
         val decision = CurrencyDecisionEngine.decide(
             CurrencyOcrEvidence("", emptySet(), emptySet(), 0f),
             CurrencyVisualAssessment("JPY", 1000, imageUsable = true, explicitlyUnsupported = false),
         )
 
-        assertEquals(CurrencyDecisionKind.UNSUPPORTED, decision.kind)
+        assertEquals(CurrencyDecisionKind.UNRECOGNIZED, decision.kind)
     }
 
     @Test
@@ -110,5 +137,21 @@ class CurrencyRecognitionTest {
         )
 
         assertTrue(evidence.countryCodes.isEmpty())
+    }
+
+    @Test
+    fun `accepts strong partial USD issuer phrases`() {
+        val evidence = CurrencyEvidenceExtractor.extract(
+            StructuredOcrResult(
+                text = "FEDERAL RESERVE 20",
+                lines = emptyList(),
+                script = "Latin",
+                confidence = 0.9f,
+                processingTimeMillis = 10,
+            )
+        )
+
+        assertEquals(setOf("USD"), evidence.countryCodes)
+        assertEquals(setOf(20), evidence.denominations)
     }
 }

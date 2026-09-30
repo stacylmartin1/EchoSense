@@ -118,7 +118,10 @@ fun DocumentTranslatorScreen(
                 override fun onCaptureSuccess(imageProxy: ImageProxy) {
                     viewModel.analyzeImageWithOcr(imageProxy, forceOnline)
                 }
-                override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "Capture failed", exception)
+                    viewModel.reportOperationFailure("Unable to capture the document. Please try again.")
+                }
             }
         )
     }
@@ -134,6 +137,7 @@ fun DocumentTranslatorScreen(
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { selectedUri ->
+            viewModel.announceAction("Opening document")
             val mimeType = context.contentResolver.getType(selectedUri)
             when {
                 mimeType?.startsWith("text/") == true -> viewModel.loadTextFile(selectedUri)
@@ -177,7 +181,7 @@ fun DocumentTranslatorScreen(
         viewModel.setImageCaptureCallback { captureAndAnalyzeText(false) }
     }
 
-    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing) {
+    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing, isProcessing) {
         if (modelDownloadStatus != null) {
             viewModel.checkAndAnnounceStatusChanges(
                 modelName = selectedModel.name,
@@ -308,8 +312,7 @@ fun DocumentTranslatorScreen(
                         contentDescription = "Take photo to translate",
                         onClick = {
                             showCamera = true
-                            viewModel.startProcessing()
-                            viewModel.announceAction("Translating")
+                            viewModel.startProcessing("Translating")
                             captureAndAnalyzeText(false)
                         },
                         enabled = !isAnalyzing && hasCameraPermission,
@@ -331,7 +334,6 @@ fun DocumentTranslatorScreen(
                         contentDescription = "Upload file to translate",
                         onClick = {
                             showCamera = false
-                            viewModel.announceAction("Translating")
                             filePickerLauncher.launch(arrayOf("text/*", "application/pdf", "image/*"))
                         },
                     )
@@ -370,8 +372,7 @@ fun DocumentTranslatorScreen(
                     AppSettings.onlineConsentGranted.value = true
                     modelManagerViewModel.saveEchoSenseSettings()
                     showCamera = true
-                    viewModel.startProcessing()
-                    viewModel.announceAction("Translating online")
+                    viewModel.startProcessing("Translating online")
                     captureAndAnalyzeText(true)
                 }) { Text("Use Online") }
             },

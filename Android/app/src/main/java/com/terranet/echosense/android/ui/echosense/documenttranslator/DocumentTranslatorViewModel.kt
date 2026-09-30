@@ -83,7 +83,7 @@ class DocumentTranslatorViewModel @Inject constructor(
             try {
                 val text = app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
                 if (text.isBlank()) {
-                    _error.value = "File is empty"
+                    reportOperationFailure("The selected file is empty.")
                     return@launch
                 }
                 textPages = text.chunked(1500)
@@ -93,7 +93,7 @@ class DocumentTranslatorViewModel @Inject constructor(
                 translateAndSpeak(textPages[0])
             } catch (e: Exception) {
                 Log.e(TAG, "Error reading text file", e)
-                _error.value = "Error reading file: ${e.message}"
+                reportOperationFailure("Unable to read the selected file.")
             }
         }
     }
@@ -123,12 +123,12 @@ class DocumentTranslatorViewModel @Inject constructor(
                     _totalPages.value = pdfRenderer!!.pageCount
                     _currentPage.value = 0
                     _documentMode.value = TranslatorMode.PDF_IMAGE
-                    startProcessing()
+                    startProcessing("Reading and translating document")
                     ocrTranslateAndSpeakPdfPage(0)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error opening PDF", e)
-                _error.value = "Error opening PDF: ${e.message}"
+                reportOperationFailure("Unable to open the PDF.")
             }
         }
     }
@@ -180,14 +180,14 @@ class DocumentTranslatorViewModel @Inject constructor(
                     _documentMode.value = TranslatorMode.IMAGE
                     _totalPages.value = 1
                     _currentPage.value = 0
-                    startProcessing()
+                    startProcessing("Reading and translating image")
                     ocrTranslateAndSpeakBitmap(bitmap)
                 } else {
-                    _error.value = "Could not decode image"
+                    reportOperationFailure("Unable to read the selected image.")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading image", e)
-                _error.value = "Error loading image: ${e.message}"
+                reportOperationFailure("Unable to open the selected image.")
             }
         }
     }
@@ -215,12 +215,12 @@ class DocumentTranslatorViewModel @Inject constructor(
                 ocrTranslateAndSpeakBitmap(bitmap, forceOnline)
             } else {
                 imageProxy.close()
-                _error.value = "Could not process camera image"
+                reportOperationFailure("Unable to process the camera image. Please try again.")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing camera image", e)
             imageProxy.close()
-            _error.value = "Error: ${e.message}"
+            reportOperationFailure("Unable to process the camera image. Please try again.")
         }
     }
 
@@ -240,10 +240,11 @@ class DocumentTranslatorViewModel @Inject constructor(
                 val ocrText = OcrHelper.recognize(
                     bitmap = bitmap,
                     preference = OcrScriptPreference.LATIN,
+                    minimumTextLength = 2,
                 ).text
                 Log.d(TAG, "Latin OCR extracted ${ocrText.length} chars")
 
-                if (!OcrHelper.isUsableResult(ocrText)) {
+                if (ocrText.trim().length < 2) {
                     val canUseOnlineImage = OnlineAnalysisHelper.isAvailable() &&
                         AppSettings.onlineConsentGranted.value &&
                         (forceOnline || AppSettings.onlineUsageMode.value != OnlineUsageMode.ASK) &&
@@ -288,13 +289,11 @@ class DocumentTranslatorViewModel @Inject constructor(
             } catch (e: IllegalStateException) {
                 _isAnalyzing.value = false
                 Log.e(TAG, "Translation failed: ${e.message}")
-                _error.value = e.message
-                ttsPlayer.announceStatus(e.message ?: "Language pack not downloaded.")
+                reportOperationFailure(e.message ?: "Translation is not available.")
             } catch (e: Exception) {
                 _isAnalyzing.value = false
                 Log.e(TAG, "OCR/translate error", e)
-                _error.value = "Error: ${e.message}"
-                stopProcessing()
+                reportOperationFailure("Unable to translate the document. Please try again.")
             }
         }
     }
@@ -319,7 +318,7 @@ class DocumentTranslatorViewModel @Inject constructor(
      * Used for text files and text-based PDFs.
      */
     private fun translateAndSpeak(text: String) {
-        startProcessing()
+        startProcessing("Translating document")
         _isAnalyzing.value = true
         _activeModelName.value = "ML Kit"
         _translatedText.value = ""
@@ -343,12 +342,11 @@ class DocumentTranslatorViewModel @Inject constructor(
             } catch (e: IllegalStateException) {
                 Log.e(TAG, "Translation failed: ${e.message}")
                 _isAnalyzing.value = false
-                _error.value = e.message
-                ttsPlayer.announceStatus(e.message ?: "Translation failed. Language pack not downloaded.")
+                reportOperationFailure(e.message ?: "Translation is not available.")
             } catch (e: Exception) {
                 Log.e(TAG, "Translation error", e)
                 _isAnalyzing.value = false
-                _error.value = "Translation error: ${e.message}"
+                reportOperationFailure("Unable to translate the document. Please try again.")
             }
         }
     }
@@ -368,7 +366,7 @@ class DocumentTranslatorViewModel @Inject constructor(
             TranslatorMode.PDF_IMAGE -> {
                 if (cur + 1 < _totalPages.value) {
                     stopProcessing()
-                    startProcessing()
+                    startProcessing("Translating next page")
                     ocrTranslateAndSpeakPdfPage(cur + 1)
                 }
             }
@@ -389,7 +387,7 @@ class DocumentTranslatorViewModel @Inject constructor(
             TranslatorMode.PDF_IMAGE -> {
                 if (cur > 0) {
                     stopProcessing()
-                    startProcessing()
+                    startProcessing("Translating previous page")
                     ocrTranslateAndSpeakPdfPage(cur - 1)
                 }
             }
@@ -402,8 +400,8 @@ class DocumentTranslatorViewModel @Inject constructor(
 
 
     fun stopTranslating() {
-        ttsPlayer.stop()
         stopProcessing()
+        ttsPlayer.announceStatus("Translation stopped.")
     }
 
     // ── Cleanup ────────────────────────────────────────────────────────

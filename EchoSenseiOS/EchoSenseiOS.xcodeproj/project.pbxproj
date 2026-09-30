@@ -10,38 +10,38 @@
 		041BFFB32FFCC0CF00FB8BA3 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 041BFFB22FFCC0CF00FB8BA3 /* LiteRTLM */; };
 		8B1CE075551ABFDFDEFA52CA /* Pods_EchoSenseiOS.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DE7C5FC9E65C75B6F9CC460 /* Pods_EchoSenseiOS.framework */; };
 		AA1DB8C8B8861BE759D107FA /* Pods_EchoSenseGenAI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C291FF4E39ACA1D393471BFC /* Pods_EchoSenseGenAI.framework */; };
-		B00000000000000000000001 /* EchoSenseiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* EchoSenseiOSApp.swift */; };
-		B00000000000000000000002 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* AppSettings.swift */; };
-		B00000000000000000000003 /* EchoSenseFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* EchoSenseFeature.swift */; };
-		B00000000000000000000004 /* ProximityTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* ProximityTypes.swift */; };
-		B00000000000000000000005 /* Prompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* Prompts.swift */; };
-		B00000000000000000000006 /* CameraFrameSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* CameraFrameSource.swift */; };
-		B00000000000000000000007 /* VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* VisionOCRService.swift */; };
-		B00000000000000000000008 /* SpeechOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* SpeechOutputService.swift */; };
-		B00000000000000000000009 /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* TranslationService.swift */; };
-		B0000000000000000000000A /* DocumentTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* DocumentTextExtractor.swift */; };
-		B0000000000000000000000B /* LocalLLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* LocalLLMClient.swift */; };
-		B0000000000000000000000C /* CloudVisionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000C /* CloudVisionClient.swift */; };
-		B0000000000000000000000D /* MediaPipeObjectDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000D /* MediaPipeObjectDetectionService.swift */; };
-		B0000000000000000000000E /* EchoSenseSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000E /* EchoSenseSessionViewModel.swift */; };
-		B0000000000000000000000F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000F /* RootView.swift */; };
-		B00000000000000000000010 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* HomeView.swift */; };
-		B00000000000000000000011 /* FeatureSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* FeatureSessionView.swift */; };
-		B00000000000000000000012 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* CameraPreviewView.swift */; };
-		B00000000000000000000013 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* SettingsView.swift */; };
-		B00000000000000000000014 /* TermsPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* TermsPrivacyView.swift */; };
-		B00000000000000000000015 /* LicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* LicensesView.swift */; };
+		B00000000000000000000001 /* App/EchoSenseiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* App/EchoSenseiOSApp.swift */; };
+		B00000000000000000000002 /* Models/AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Models/AppSettings.swift */; };
+		B00000000000000000000003 /* Models/EchoSenseFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* Models/EchoSenseFeature.swift */; };
+		B00000000000000000000004 /* Models/ProximityTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* Models/ProximityTypes.swift */; };
+		B00000000000000000000005 /* Models/Prompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* Models/Prompts.swift */; };
+		B00000000000000000000006 /* Services/Camera/CameraFrameSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* Services/Camera/CameraFrameSource.swift */; };
+		B00000000000000000000007 /* Services/OCR/VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* Services/OCR/VisionOCRService.swift */; };
+		B00000000000000000000008 /* Services/Speech/SpeechOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* Services/Speech/SpeechOutputService.swift */; };
+		B00000000000000000000009 /* Services/Translation/TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* Services/Translation/TranslationService.swift */; };
+		B0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift */; };
+		B0000000000000000000000B /* Services/Inference/LocalLLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* Services/Inference/LocalLLMClient.swift */; };
+		B0000000000000000000000C /* Services/Inference/CloudVisionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000C /* Services/Inference/CloudVisionClient.swift */; };
+		B0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift */; };
+		B0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift */; };
+		B0000000000000000000000F /* Views/RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000F /* Views/RootView.swift */; };
+		B00000000000000000000010 /* Views/HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* Views/HomeView.swift */; };
+		B00000000000000000000011 /* Views/FeatureSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* Views/FeatureSessionView.swift */; };
+		B00000000000000000000012 /* Views/CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* Views/CameraPreviewView.swift */; };
+		B00000000000000000000013 /* Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* Views/SettingsView.swift */; };
+		B00000000000000000000014 /* Views/TermsPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Views/TermsPrivacyView.swift */; };
+		B00000000000000000000015 /* Views/LicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* Views/LicensesView.swift */; };
 		B00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* Assets.xcassets */; };
-		B00000000000000000000044 /* StreamingSentenceChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* StreamingSentenceChunker.swift */; };
-		B00000000000000000000045 /* VoiceCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* VoiceCommandService.swift */; };
-		B00000000000000000000046 /* ModelManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* ModelManifest.swift */; };
-		B00000000000000000000047 /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* ModelDownloadManager.swift */; };
-		B00000000000000000000048 /* ModelSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000048 /* ModelSetupView.swift */; };
-		B00000000000000000000098 /* yolov8n.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000098 /* yolov8n.mlpackage */; };
-		B00000000000000000000099 /* YOLOv3Tiny.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000099 /* YOLOv3Tiny.mlmodel */; };
-		B00000000000000000000106 /* VisualUtilityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000106 /* VisualUtilityAnalyzer.swift */; };
-		B00000000000000000000107 /* BarcodeScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* BarcodeScannerService.swift */; };
-		B00000000000000000000108 /* MagnifierView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* MagnifierView.swift */; };
+		B00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift */; };
+		B00000000000000000000045 /* Services/Speech/VoiceCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* Services/Speech/VoiceCommandService.swift */; };
+		B00000000000000000000046 /* Models/ModelManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* Models/ModelManifest.swift */; };
+		B00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift */; };
+		B00000000000000000000048 /* Views/ModelSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000048 /* Views/ModelSetupView.swift */; };
+		B00000000000000000000098 /* Resources/yolov8n.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000098 /* Resources/yolov8n.mlpackage */; };
+		B00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel */; };
+		B00000000000000000000106 /* Services/Camera/VisualUtilityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000106 /* Services/Camera/VisualUtilityAnalyzer.swift */; };
+		B00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift */; };
+		B00000000000000000000108 /* Views/MagnifierView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* Views/MagnifierView.swift */; };
 		B10000000000000000000001 /* EchoSenseGenAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* EchoSenseGenAI.swift */; };
 /* End PBXBuildFile section */
 
@@ -49,40 +49,40 @@
 		041BFFB42FFE157200FB8BA3 /* EchoSenseiOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EchoSenseiOS.entitlements; sourceTree = "<group>"; };
 		6D715ED3EDD8AA760CEF17CA /* Pods-EchoSenseiOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseiOS.debug.xcconfig"; path = "Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS.debug.xcconfig"; sourceTree = "<group>"; };
 		9DE7C5FC9E65C75B6F9CC460 /* Pods_EchoSenseiOS.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_EchoSenseiOS.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		A00000000000000000000001 /* EchoSenseiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/EchoSenseiOSApp.swift; sourceTree = "<group>"; };
-		A00000000000000000000002 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AppSettings.swift; sourceTree = "<group>"; };
-		A00000000000000000000003 /* EchoSenseFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/EchoSenseFeature.swift; sourceTree = "<group>"; };
-		A00000000000000000000004 /* ProximityTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ProximityTypes.swift; sourceTree = "<group>"; };
-		A00000000000000000000005 /* Prompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/Prompts.swift; sourceTree = "<group>"; };
-		A00000000000000000000006 /* CameraFrameSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/CameraFrameSource.swift; sourceTree = "<group>"; };
-		A00000000000000000000007 /* VisionOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/OCR/VisionOCRService.swift; sourceTree = "<group>"; };
-		A00000000000000000000008 /* SpeechOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/SpeechOutputService.swift; sourceTree = "<group>"; };
-		A00000000000000000000009 /* TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Translation/TranslationService.swift; sourceTree = "<group>"; };
-		A0000000000000000000000A /* DocumentTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Documents/DocumentTextExtractor.swift; sourceTree = "<group>"; };
-		A0000000000000000000000B /* LocalLLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/LocalLLMClient.swift; sourceTree = "<group>"; };
-		A0000000000000000000000C /* CloudVisionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/CloudVisionClient.swift; sourceTree = "<group>"; };
-		A0000000000000000000000D /* MediaPipeObjectDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/MediaPipeObjectDetectionService.swift; sourceTree = "<group>"; };
-		A0000000000000000000000E /* EchoSenseSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EchoSenseSessionViewModel.swift; sourceTree = "<group>"; };
-		A0000000000000000000000F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RootView.swift; sourceTree = "<group>"; };
-		A00000000000000000000010 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/HomeView.swift; sourceTree = "<group>"; };
-		A00000000000000000000011 /* FeatureSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FeatureSessionView.swift; sourceTree = "<group>"; };
-		A00000000000000000000012 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/CameraPreviewView.swift; sourceTree = "<group>"; };
-		A00000000000000000000013 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SettingsView.swift; sourceTree = "<group>"; };
-		A00000000000000000000014 /* TermsPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/TermsPrivacyView.swift; sourceTree = "<group>"; };
-		A00000000000000000000015 /* LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LicensesView.swift; sourceTree = "<group>"; };
+		A00000000000000000000001 /* App/EchoSenseiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/EchoSenseiOSApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000002 /* Models/AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AppSettings.swift; sourceTree = "<group>"; };
+		A00000000000000000000003 /* Models/EchoSenseFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/EchoSenseFeature.swift; sourceTree = "<group>"; };
+		A00000000000000000000004 /* Models/ProximityTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ProximityTypes.swift; sourceTree = "<group>"; };
+		A00000000000000000000005 /* Models/Prompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/Prompts.swift; sourceTree = "<group>"; };
+		A00000000000000000000006 /* Services/Camera/CameraFrameSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/CameraFrameSource.swift; sourceTree = "<group>"; };
+		A00000000000000000000007 /* Services/OCR/VisionOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/OCR/VisionOCRService.swift; sourceTree = "<group>"; };
+		A00000000000000000000008 /* Services/Speech/SpeechOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/SpeechOutputService.swift; sourceTree = "<group>"; };
+		A00000000000000000000009 /* Services/Translation/TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Translation/TranslationService.swift; sourceTree = "<group>"; };
+		A0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Documents/DocumentTextExtractor.swift; sourceTree = "<group>"; };
+		A0000000000000000000000B /* Services/Inference/LocalLLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/LocalLLMClient.swift; sourceTree = "<group>"; };
+		A0000000000000000000000C /* Services/Inference/CloudVisionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/CloudVisionClient.swift; sourceTree = "<group>"; };
+		A0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/MediaPipeObjectDetectionService.swift; sourceTree = "<group>"; };
+		A0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EchoSenseSessionViewModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000000F /* Views/RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RootView.swift; sourceTree = "<group>"; };
+		A00000000000000000000010 /* Views/HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/HomeView.swift; sourceTree = "<group>"; };
+		A00000000000000000000011 /* Views/FeatureSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FeatureSessionView.swift; sourceTree = "<group>"; };
+		A00000000000000000000012 /* Views/CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/CameraPreviewView.swift; sourceTree = "<group>"; };
+		A00000000000000000000013 /* Views/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SettingsView.swift; sourceTree = "<group>"; };
+		A00000000000000000000014 /* Views/TermsPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/TermsPrivacyView.swift; sourceTree = "<group>"; };
+		A00000000000000000000015 /* Views/LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LicensesView.swift; sourceTree = "<group>"; };
 		A00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A00000000000000000000018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000019 /* EchoSenseiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EchoSenseiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A00000000000000000000044 /* StreamingSentenceChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/StreamingSentenceChunker.swift; sourceTree = "<group>"; };
-		A00000000000000000000045 /* VoiceCommandService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/VoiceCommandService.swift; sourceTree = "<group>"; };
-		A00000000000000000000046 /* ModelManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ModelManifest.swift; sourceTree = "<group>"; };
-		A00000000000000000000047 /* ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/ModelDownloadManager.swift; sourceTree = "<group>"; };
-		A00000000000000000000048 /* ModelSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ModelSetupView.swift; sourceTree = "<group>"; };
-		A00000000000000000000098 /* yolov8n.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlpackage; path = Resources/yolov8n.mlpackage; sourceTree = "<group>"; };
-		A00000000000000000000099 /* YOLOv3Tiny.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlmodel; path = Resources/YOLOv3Tiny.mlmodel; sourceTree = "<group>"; };
-		A00000000000000000000106 /* VisualUtilityAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/VisualUtilityAnalyzer.swift; sourceTree = "<group>"; };
-		A00000000000000000000107 /* BarcodeScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/BarcodeScannerService.swift; sourceTree = "<group>"; };
-		A00000000000000000000108 /* MagnifierView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MagnifierView.swift; sourceTree = "<group>"; };
+		A00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/StreamingSentenceChunker.swift; sourceTree = "<group>"; };
+		A00000000000000000000045 /* Services/Speech/VoiceCommandService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Speech/VoiceCommandService.swift; sourceTree = "<group>"; };
+		A00000000000000000000046 /* Models/ModelManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ModelManifest.swift; sourceTree = "<group>"; };
+		A00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Inference/ModelDownloadManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000048 /* Views/ModelSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ModelSetupView.swift; sourceTree = "<group>"; };
+		A00000000000000000000098 /* Resources/yolov8n.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlpackage; path = Resources/yolov8n.mlpackage; sourceTree = "<group>"; };
+		A00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.mlmodel; path = Resources/YOLOv3Tiny.mlmodel; sourceTree = "<group>"; };
+		A00000000000000000000106 /* Services/Camera/VisualUtilityAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/VisualUtilityAnalyzer.swift; sourceTree = "<group>"; };
+		A00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/Camera/BarcodeScannerService.swift; sourceTree = "<group>"; };
+		A00000000000000000000108 /* Views/MagnifierView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MagnifierView.swift; sourceTree = "<group>"; };
 		A10000000000000000000001 /* EchoSenseGenAI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = EchoSenseGenAI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000002 /* EchoSenseGenAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoSenseGenAI.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -137,38 +137,38 @@
 			isa = PBXGroup;
 			children = (
 				041BFFB42FFE157200FB8BA3 /* EchoSenseiOS.entitlements */,
-				A00000000000000000000001 /* EchoSenseiOSApp.swift */,
-				A00000000000000000000002 /* AppSettings.swift */,
-				A00000000000000000000003 /* EchoSenseFeature.swift */,
-				A00000000000000000000004 /* ProximityTypes.swift */,
-				A00000000000000000000005 /* Prompts.swift */,
-				A00000000000000000000046 /* ModelManifest.swift */,
-				A00000000000000000000006 /* CameraFrameSource.swift */,
-				A00000000000000000000106 /* VisualUtilityAnalyzer.swift */,
-				A00000000000000000000107 /* BarcodeScannerService.swift */,
-				A00000000000000000000007 /* VisionOCRService.swift */,
-				A00000000000000000000008 /* SpeechOutputService.swift */,
-				A00000000000000000000044 /* StreamingSentenceChunker.swift */,
-				A00000000000000000000045 /* VoiceCommandService.swift */,
-				A00000000000000000000009 /* TranslationService.swift */,
-				A0000000000000000000000A /* DocumentTextExtractor.swift */,
-				A0000000000000000000000B /* LocalLLMClient.swift */,
-				A0000000000000000000000C /* CloudVisionClient.swift */,
-				A0000000000000000000000D /* MediaPipeObjectDetectionService.swift */,
-				A00000000000000000000047 /* ModelDownloadManager.swift */,
-				A0000000000000000000000E /* EchoSenseSessionViewModel.swift */,
-				A0000000000000000000000F /* RootView.swift */,
-				A00000000000000000000010 /* HomeView.swift */,
-				A00000000000000000000011 /* FeatureSessionView.swift */,
-				A00000000000000000000108 /* MagnifierView.swift */,
-				A00000000000000000000012 /* CameraPreviewView.swift */,
-				A00000000000000000000013 /* SettingsView.swift */,
-				A00000000000000000000014 /* TermsPrivacyView.swift */,
-				A00000000000000000000015 /* LicensesView.swift */,
-				A00000000000000000000048 /* ModelSetupView.swift */,
+				A00000000000000000000001 /* App/EchoSenseiOSApp.swift */,
+				A00000000000000000000002 /* Models/AppSettings.swift */,
+				A00000000000000000000003 /* Models/EchoSenseFeature.swift */,
+				A00000000000000000000004 /* Models/ProximityTypes.swift */,
+				A00000000000000000000005 /* Models/Prompts.swift */,
+				A00000000000000000000046 /* Models/ModelManifest.swift */,
+				A00000000000000000000006 /* Services/Camera/CameraFrameSource.swift */,
+				A00000000000000000000106 /* Services/Camera/VisualUtilityAnalyzer.swift */,
+				A00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift */,
+				A00000000000000000000007 /* Services/OCR/VisionOCRService.swift */,
+				A00000000000000000000008 /* Services/Speech/SpeechOutputService.swift */,
+				A00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift */,
+				A00000000000000000000045 /* Services/Speech/VoiceCommandService.swift */,
+				A00000000000000000000009 /* Services/Translation/TranslationService.swift */,
+				A0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift */,
+				A0000000000000000000000B /* Services/Inference/LocalLLMClient.swift */,
+				A0000000000000000000000C /* Services/Inference/CloudVisionClient.swift */,
+				A0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift */,
+				A00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift */,
+				A0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift */,
+				A0000000000000000000000F /* Views/RootView.swift */,
+				A00000000000000000000010 /* Views/HomeView.swift */,
+				A00000000000000000000011 /* Views/FeatureSessionView.swift */,
+				A00000000000000000000108 /* Views/MagnifierView.swift */,
+				A00000000000000000000012 /* Views/CameraPreviewView.swift */,
+				A00000000000000000000013 /* Views/SettingsView.swift */,
+				A00000000000000000000014 /* Views/TermsPrivacyView.swift */,
+				A00000000000000000000015 /* Views/LicensesView.swift */,
+				A00000000000000000000048 /* Views/ModelSetupView.swift */,
 				A00000000000000000000016 /* Assets.xcassets */,
-				A00000000000000000000098 /* yolov8n.mlpackage */,
-				A00000000000000000000099 /* YOLOv3Tiny.mlmodel */,
+				A00000000000000000000098 /* Resources/yolov8n.mlpackage */,
+				A00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel */,
 				A00000000000000000000018 /* Info.plist */,
 			);
 			path = EchoSenseiOS;
@@ -290,8 +290,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B00000000000000000000016 /* Assets.xcassets in Resources */,
-				B00000000000000000000098 /* yolov8n.mlpackage in Resources */,
-				B00000000000000000000099 /* YOLOv3Tiny.mlmodel in Resources */,
+				B00000000000000000000098 /* Resources/yolov8n.mlpackage in Resources */,
+				B00000000000000000000099 /* Resources/YOLOv3Tiny.mlmodel in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,9 +357,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -374,9 +378,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -390,35 +398,35 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B00000000000000000000001 /* EchoSenseiOSApp.swift in Sources */,
-				B00000000000000000000002 /* AppSettings.swift in Sources */,
-				B00000000000000000000003 /* EchoSenseFeature.swift in Sources */,
-				B00000000000000000000004 /* ProximityTypes.swift in Sources */,
-				B00000000000000000000005 /* Prompts.swift in Sources */,
-				B00000000000000000000046 /* ModelManifest.swift in Sources */,
-				B00000000000000000000006 /* CameraFrameSource.swift in Sources */,
-				B00000000000000000000106 /* VisualUtilityAnalyzer.swift in Sources */,
-				B00000000000000000000107 /* BarcodeScannerService.swift in Sources */,
-				B00000000000000000000007 /* VisionOCRService.swift in Sources */,
-				B00000000000000000000008 /* SpeechOutputService.swift in Sources */,
-				B00000000000000000000044 /* StreamingSentenceChunker.swift in Sources */,
-				B00000000000000000000045 /* VoiceCommandService.swift in Sources */,
-				B00000000000000000000009 /* TranslationService.swift in Sources */,
-				B0000000000000000000000A /* DocumentTextExtractor.swift in Sources */,
-				B0000000000000000000000B /* LocalLLMClient.swift in Sources */,
-				B0000000000000000000000C /* CloudVisionClient.swift in Sources */,
-				B0000000000000000000000D /* MediaPipeObjectDetectionService.swift in Sources */,
-				B00000000000000000000047 /* ModelDownloadManager.swift in Sources */,
-				B0000000000000000000000E /* EchoSenseSessionViewModel.swift in Sources */,
-				B0000000000000000000000F /* RootView.swift in Sources */,
-				B00000000000000000000010 /* HomeView.swift in Sources */,
-				B00000000000000000000011 /* FeatureSessionView.swift in Sources */,
-				B00000000000000000000108 /* MagnifierView.swift in Sources */,
-				B00000000000000000000012 /* CameraPreviewView.swift in Sources */,
-				B00000000000000000000013 /* SettingsView.swift in Sources */,
-				B00000000000000000000014 /* TermsPrivacyView.swift in Sources */,
-				B00000000000000000000015 /* LicensesView.swift in Sources */,
-				B00000000000000000000048 /* ModelSetupView.swift in Sources */,
+				B00000000000000000000001 /* App/EchoSenseiOSApp.swift in Sources */,
+				B00000000000000000000002 /* Models/AppSettings.swift in Sources */,
+				B00000000000000000000003 /* Models/EchoSenseFeature.swift in Sources */,
+				B00000000000000000000004 /* Models/ProximityTypes.swift in Sources */,
+				B00000000000000000000005 /* Models/Prompts.swift in Sources */,
+				B00000000000000000000046 /* Models/ModelManifest.swift in Sources */,
+				B00000000000000000000006 /* Services/Camera/CameraFrameSource.swift in Sources */,
+				B00000000000000000000106 /* Services/Camera/VisualUtilityAnalyzer.swift in Sources */,
+				B00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift in Sources */,
+				B00000000000000000000007 /* Services/OCR/VisionOCRService.swift in Sources */,
+				B00000000000000000000008 /* Services/Speech/SpeechOutputService.swift in Sources */,
+				B00000000000000000000044 /* Services/Speech/StreamingSentenceChunker.swift in Sources */,
+				B00000000000000000000045 /* Services/Speech/VoiceCommandService.swift in Sources */,
+				B00000000000000000000009 /* Services/Translation/TranslationService.swift in Sources */,
+				B0000000000000000000000A /* Services/Documents/DocumentTextExtractor.swift in Sources */,
+				B0000000000000000000000B /* Services/Inference/LocalLLMClient.swift in Sources */,
+				B0000000000000000000000C /* Services/Inference/CloudVisionClient.swift in Sources */,
+				B0000000000000000000000D /* Services/Inference/MediaPipeObjectDetectionService.swift in Sources */,
+				B00000000000000000000047 /* Services/Inference/ModelDownloadManager.swift in Sources */,
+				B0000000000000000000000E /* Features/EchoSenseSessionViewModel.swift in Sources */,
+				B0000000000000000000000F /* Views/RootView.swift in Sources */,
+				B00000000000000000000010 /* Views/HomeView.swift in Sources */,
+				B00000000000000000000011 /* Views/FeatureSessionView.swift in Sources */,
+				B00000000000000000000108 /* Views/MagnifierView.swift in Sources */,
+				B00000000000000000000012 /* Views/CameraPreviewView.swift in Sources */,
+				B00000000000000000000013 /* Views/SettingsView.swift in Sources */,
+				B00000000000000000000014 /* Views/TermsPrivacyView.swift in Sources */,
+				B00000000000000000000015 /* Views/LicensesView.swift in Sources */,
+				B00000000000000000000048 /* Views/ModelSetupView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

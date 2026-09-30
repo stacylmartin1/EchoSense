@@ -128,7 +128,7 @@ fun NavigationAssistanceScreen(
                     }
                     override fun onError(exception: ImageCaptureException) {
                         Log.e(TAG, "Image capture failed", exception)
-                        viewModel.stopProcessing()
+                        viewModel.reportOperationFailure("Unable to capture the scene. Please try again.")
                     }
                 }
             )
@@ -211,7 +211,7 @@ fun NavigationAssistanceScreen(
         }
     }
 
-    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing) {
+    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing, isProcessing) {
         if (modelDownloadStatus != null) {
             viewModel.checkAndAnnounceStatusChanges(
                 modelName = selectedModel.name,
@@ -414,7 +414,7 @@ fun NavigationAssistanceScreen(
                             pendingOnlineRequestIsVoice = false
                             confirmOnlineAnalysis = true
                         } else {
-                            viewModel.startOnDeviceProcessing()
+                            viewModel.startOnDeviceProcessing("Analyzing surroundings")
                             captureAndAnalyze()
                         }
                     },
@@ -473,7 +473,7 @@ fun NavigationAssistanceScreen(
             if (pendingOnlineRequestIsVoice) {
                 viewModel.analyzePendingVoiceCommand(useOnline = false)
             } else {
-                viewModel.startOnDeviceProcessing()
+                viewModel.startOnDeviceProcessing("Analyzing surroundings")
                 captureAndAnalyze()
             }
             pendingOnlineRequestIsVoice = false
@@ -498,7 +498,7 @@ fun NavigationAssistanceScreen(
                     if (pendingOnlineRequestIsVoice) {
                         viewModel.analyzePendingVoiceCommand(useOnline = true)
                     } else {
-                        viewModel.startOnlineProcessing()
+                        viewModel.startOnlineProcessing("Analyzing surroundings online")
                         captureAndAnalyze()
                     }
                     pendingOnlineRequestIsVoice = false

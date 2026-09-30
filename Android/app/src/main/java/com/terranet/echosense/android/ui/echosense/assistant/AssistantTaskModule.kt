@@ -67,6 +67,7 @@ class AssistantTask @Inject constructor() : CustomTask {
     val viewModel: AssistantViewModel = hiltViewModel()
     val managerState by modelManager.uiState.collectAsState()
     val selectedModel = managerState.selectedModel
+    val isProcessing by viewModel.isProcessing.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val downloadStatus = managerState.modelDownloadStatus[selectedModel.name]
     val initializationStatus = managerState.modelInitializationStatus[selectedModel.name]?.status
@@ -86,6 +87,7 @@ class AssistantTask @Inject constructor() : CustomTask {
       downloadStatus?.status,
       initializationStatus,
       selectedModel.instance,
+      isProcessing,
     ) {
       val status = downloadStatus?.status ?: return@LaunchedEffect
       viewModel.announceStartupModelStatus(

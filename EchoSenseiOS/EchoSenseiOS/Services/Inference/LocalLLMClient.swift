@@ -26,8 +26,18 @@ protocol LocalLLMClient: AnyObject {
   var isReady: Bool { get }
   var diagnosticHandler: (@Sendable (String) -> Void)? { get set }
   func load(modelURL: URL) async throws
-  func generate(prompt: String, image: UIImage?) async throws -> AsyncThrowingStream<String, Error>
+  func generate(
+    prompt: String,
+    image: UIImage?,
+    maxImageDimension: CGFloat
+  ) async throws -> AsyncThrowingStream<String, Error>
   func cancelGeneration()
+}
+
+extension LocalLLMClient {
+  func generate(prompt: String, image: UIImage?) async throws -> AsyncThrowingStream<String, Error> {
+    try await generate(prompt: prompt, image: image, maxImageDimension: 384)
+  }
 }
 
 enum LocalLLMError: LocalizedError {
@@ -145,7 +155,11 @@ final class LiteRTLMClient: LocalLLMClient, @unchecked Sendable {
     #endif
   }
 
-  func generate(prompt: String, image: UIImage?) async throws -> AsyncThrowingStream<String, Error> {
+  func generate(
+    prompt: String,
+    image: UIImage?,
+    maxImageDimension: CGFloat
+  ) async throws -> AsyncThrowingStream<String, Error> {
     diagnose("Generation requested")
     guard isReady else { throw LocalLLMError.modelNotLoaded }
     if image != nil && !imageInputEnabled {
@@ -186,12 +200,17 @@ final class LiteRTLMClient: LocalLLMClient, @unchecked Sendable {
           diagnose("Preparing image input", generationID: generationID)
           let message: Message
           if let image = image {
-            // Resize image to 384px maximum dimension to reduce patch count and prevent OOM/timeouts
-            let scaledImage = image.scaledToFit(maxDimension: 384)
+            // Bound image patches to avoid native-engine memory pressure. Callers with small,
+            // detail-heavy subjects may opt into a larger, still-capped input.
+            let boundedDimension = min(768, max(256, maxImageDimension))
+            let scaledImage = image.scaledToFit(maxDimension: boundedDimension)
             guard let pngData = scaledImage.pngData() else {
               throw LocalLLMError.emptyResponse
             }
-            diagnose("Image ready (\(pngData.count) bytes)", generationID: generationID)
+            diagnose(
+              "Image ready at max \(Int(boundedDimension))px (\(pngData.count) bytes)",
+              generationID: generationID
+            )
             message = Message(contents: [.imageData(pngData), .text(prompt)])
           } else {
             message = Message(prompt)

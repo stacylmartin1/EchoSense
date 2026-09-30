@@ -243,6 +243,7 @@ fun MagnifierScreen(
                                 frozenImage?.recycle()
                                 frozenImage = null
                                 camera?.cameraControl?.setZoomRatio(zoom)
+                                viewModel.announceAction("Live view resumed.")
                             } else {
                                 imageCapture.takePicture(
                                     ContextCompat.getMainExecutor(context),
@@ -251,11 +252,17 @@ fun MagnifierScreen(
                                             viewModel.captureMagnifierFrame(image) { bitmap ->
                                                 frozenAtZoom = zoom
                                                 frozenImage = bitmap
+                                                if (bitmap != null) {
+                                                    viewModel.announceAction("Image frozen.")
+                                                } else {
+                                                    viewModel.announceAction("Unable to freeze the image.")
+                                                }
                                             }
                                         }
 
                                         override fun onError(exception: ImageCaptureException) {
                                             Log.e(MAGNIFIER_TAG, "Unable to freeze image", exception)
+                                            viewModel.announceAction("Unable to freeze the image.")
                                         }
                                     },
                                 )
@@ -266,21 +273,30 @@ fun MagnifierScreen(
                         icon = Icons.Default.Contrast,
                         label = "Contrast",
                         contentDescription = "Toggle high contrast",
-                        onClick = { contrast = !contrast },
+                        onClick = {
+                            contrast = !contrast
+                            viewModel.announceAction(if (contrast) "High contrast on." else "High contrast off.")
+                        },
                         highlighted = contrast,
                     )
                     EchoSenseActionButton(
                         icon = Icons.Default.InvertColors,
                         label = "Invert",
                         contentDescription = "Toggle inverted colors",
-                        onClick = { inverted = !inverted },
+                        onClick = {
+                            inverted = !inverted
+                            viewModel.announceAction(if (inverted) "Inverted colors on." else "Inverted colors off.")
+                        },
                         highlighted = inverted,
                     )
                     EchoSenseActionButton(
                         icon = Icons.Default.Tonality,
                         label = "Gray",
                         contentDescription = "Toggle grayscale",
-                        onClick = { grayscale = !grayscale },
+                        onClick = {
+                            grayscale = !grayscale
+                            viewModel.announceAction(if (grayscale) "Grayscale on." else "Grayscale off.")
+                        },
                         highlighted = grayscale,
                     )
                     EchoSenseActionButton(
@@ -290,6 +306,7 @@ fun MagnifierScreen(
                         onClick = {
                             torchEnabled = !torchEnabled
                             camera?.cameraControl?.enableTorch(torchEnabled)
+                            viewModel.announceAction(if (torchEnabled) "Flashlight on." else "Flashlight off.")
                         },
                         highlighted = torchEnabled,
                         enabled = camera?.cameraInfo?.hasFlashUnit() != false,

@@ -143,6 +143,8 @@ fun DocumentReaderScreen(
                         viewModel.instantTextSnapshotCaptureFailed()
                     } else if (pendingCameraAction == CameraReadAction.GUIDED_DOCUMENT_SNAPSHOT) {
                         viewModel.guidedDocumentSnapshotFailed()
+                    } else {
+                        viewModel.reportOperationFailure("Unable to capture an image. Please try again.")
                     }
                 }
             }
@@ -158,6 +160,7 @@ fun DocumentReaderScreen(
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { selectedUri ->
+            viewModel.announceAction("Opening document")
             val mimeType = context.contentResolver.getType(selectedUri)
             when {
                 mimeType?.startsWith("text/") == true -> viewModel.loadTextFile(selectedUri)
@@ -372,8 +375,7 @@ fun DocumentReaderScreen(
                             viewModel.announceAction("Camera ready. Tap Read to capture.")
                         } else {
                             pendingCameraAction = CameraReadAction.READ_TEXT
-                            viewModel.startProcessing()
-                            viewModel.announceAction("Reading document")
+                            viewModel.startProcessing("Reading document")
                             captureAndAnalyze()
                         }
                     },
@@ -452,6 +454,7 @@ fun DocumentReaderScreen(
                     contentDescription = "Identify the color at the center of the camera view",
                     onClick = {
                         pendingCameraAction = CameraReadAction.COLOR
+                        viewModel.announceAction("Identifying color")
                         if (showCamera) {
                             captureAndAnalyze()
                         } else {
@@ -469,6 +472,7 @@ fun DocumentReaderScreen(
                     contentDescription = "Measure the approximate light level seen by the camera",
                     onClick = {
                         pendingCameraAction = CameraReadAction.LIGHT
+                        viewModel.announceAction("Checking light level")
                         if (showCamera) {
                             captureAndAnalyze()
                         } else {
@@ -486,6 +490,7 @@ fun DocumentReaderScreen(
                     contentDescription = "Scan a barcode or QR code",
                     onClick = {
                         pendingCameraAction = CameraReadAction.CODE
+                        viewModel.announceAction("Scanning code")
                         if (showCamera) {
                             captureAndAnalyze()
                         } else {

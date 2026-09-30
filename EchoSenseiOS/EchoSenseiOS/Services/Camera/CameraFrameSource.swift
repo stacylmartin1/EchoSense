@@ -134,6 +134,18 @@ final class CameraFrameSource: NSObject, ObservableObject {
       // Configure the intended maximum before the session starts; capture requests still
       // read the active maximum defensively in case the session is reconfigured later.
       photoOutput.maxPhotoQualityPrioritization = .quality
+      let supportedDimensions = camera.activeFormat.supportedMaxPhotoDimensions
+      let twelveMegapixelLimit = 12_500_000
+      let preferredDimensions = supportedDimensions
+        .filter { Int($0.width) * Int($0.height) <= twelveMegapixelLimit }
+        .max {
+          Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height)
+        } ?? supportedDimensions.max {
+          Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height)
+        }
+      if let preferredDimensions {
+        photoOutput.maxPhotoDimensions = preferredDimensions
+      }
     }
 
     if depthConfigured, session.canAddOutput(depthOutput) {
@@ -301,6 +313,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
 
         let settings = AVCapturePhotoSettings()
         settings.photoQualityPrioritization = self.photoOutput.maxPhotoQualityPrioritization
+        settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions
         let identifier = settings.uniqueID
         let processor = PhotoCaptureProcessor { [weak self] result in
           self?.sessionQueue.async {

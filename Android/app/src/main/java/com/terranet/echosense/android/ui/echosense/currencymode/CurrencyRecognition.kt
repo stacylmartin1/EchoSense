@@ -25,7 +25,9 @@ internal object SupportedCurrencyCatalog {
             name = "US Dollars",
             denominations = setOf(1, 2, 5, 10, 20, 50, 100),
             issuerPhrases = setOf(
+                "FEDERAL RESERVE",
                 "FEDERAL RESERVE NOTE",
+                "UNITED STATES",
                 "UNITED STATES OF AMERICA",
                 "THE UNITED STATES OF AMERICA",
             ),
@@ -200,16 +202,16 @@ internal object CurrencyDecisionEngine {
             )
         }
         if (visual.explicitlyUnsupported) return CurrencyDecision(
-            CurrencyDecisionKind.UNSUPPORTED,
-            "This bank note is not one of the supported currencies: US dollars, Canadian dollars, euros, British pounds, or Swiss francs.",
+            CurrencyDecisionKind.UNRECOGNIZED,
+            "This note was not recognized as a supported currency. Try the other side or improve the lighting.",
         )
         val code = visual.code ?: return CurrencyDecision(
             CurrencyDecisionKind.UNRECOGNIZED,
             "Unable to identify the bank note. Show the other side and try again.",
         )
         val currency = SupportedCurrencyCatalog.find(code) ?: return CurrencyDecision(
-            CurrencyDecisionKind.UNSUPPORTED,
-            "This bank note is not one of the supported currencies: US dollars, Canadian dollars, euros, British pounds, or Swiss francs.",
+            CurrencyDecisionKind.UNRECOGNIZED,
+            "This note was not recognized as a supported currency. Try the other side or improve the lighting.",
         )
         val denomination = visual.denomination
         if (denomination == null || denomination !in currency.denominations) {
@@ -218,12 +220,22 @@ internal object CurrencyDecisionEngine {
                 "The currency may be ${currency.name}, but the denomination is unclear. Show the other side and try again.",
             )
         }
-        val countryAgrees = evidence.countryCodes == setOf(code)
+        val countryAgrees = code in evidence.countryCodes
         val denominationAgrees = denomination in evidence.denominations
-        if (!countryAgrees || !denominationAgrees) {
+        val countryConflicts = evidence.countryCodes.isNotEmpty() && !countryAgrees
+        val denominationConflicts = countryAgrees &&
+            evidence.denominations.isNotEmpty() &&
+            !denominationAgrees
+        if (countryConflicts || denominationConflicts) {
             return CurrencyDecision(
                 CurrencyDecisionKind.NEEDS_ANOTHER_VIEW,
-                "The note may be $denomination ${currency.name}, but there is not enough matching text to confirm it. Show the other side and try again.",
+                "The image and printed text do not agree. Show the other side of the note and try again.",
+            )
+        }
+        if (!countryAgrees && !denominationAgrees) {
+            return CurrencyDecision(
+                CurrencyDecisionKind.IDENTIFIED,
+                "Likely $denomination ${currency.name}.",
             )
         }
         return CurrencyDecision(
