@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -64,7 +65,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -105,14 +105,23 @@ fun DocumentTranslatorScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
-    val imageCapture = remember { ImageCapture.Builder().build() }
+    val imageCapture = remember {
+        ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .build()
+    }
 
-    val captureAndAnalyzeText = {
+    val captureAndAnalyzeText: (Boolean) -> Unit = { forceOnline ->
         imageCapture.takePicture(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(imageProxy: ImageProxy) { viewModel.analyzeImageWithOcr(imageProxy) }
-                override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
+                override fun onCaptureSuccess(imageProxy: ImageProxy) {
+                    viewModel.analyzeImageWithOcr(imageProxy, forceOnline)
+                }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "Capture failed", exception)
+                    viewModel.reportOperationFailure("Unable to capture the document. Please try again.")
+                }
             }
         )
     }
@@ -128,6 +137,7 @@ fun DocumentTranslatorScreen(
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { selectedUri ->
+            viewModel.announceAction("Opening document")
             val mimeType = context.contentResolver.getType(selectedUri)
             when {
                 mimeType?.startsWith("text/") == true -> viewModel.loadTextFile(selectedUri)
@@ -142,13 +152,17 @@ fun DocumentTranslatorScreen(
     val isAnalyzing by viewModel.isAnalyzing.collectAsState()
     val objectDescription by viewModel.objectDescription.collectAsState()
     val translatedText by viewModel.translatedText.collectAsState()
+    val recognizedText by viewModel.recognizedText.collectAsState()
+    val sourceLanguageName by viewModel.sourceLanguageName.collectAsState()
     val currentPage by viewModel.currentPage.collectAsState()
     val totalPages by viewModel.totalPages.collectAsState()
     val documentMode by viewModel.documentMode.collectAsState()
-    val forceLlmOcr by viewModel.forceLlmOcr.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
     var showCamera by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var confirmOnlineTranslation by remember { mutableStateOf(false) }
+    val onlineApiKey by AppSettings.geminiApiKey.collectAsState()
+    val onlineProvider by AppSettings.onlineProvider.collectAsState()
 
     val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
     val selectedModel = modelManagerUiState.selectedModel
@@ -164,10 +178,10 @@ fun DocumentTranslatorScreen(
 
     LaunchedEffect(key1 = true) {
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        viewModel.setImageCaptureCallback { captureAndAnalyzeText() }
+        viewModel.setImageCaptureCallback { captureAndAnalyzeText(false) }
     }
 
-    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing) {
+    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing, isProcessing) {
         if (modelDownloadStatus != null) {
             viewModel.checkAndAnnounceStatusChanges(
                 modelName = selectedModel.name,
@@ -195,13 +209,19 @@ fun DocumentTranslatorScreen(
 
     DisposableEffect(Unit) { onDispose { viewModel.stopProcessing() } }
 
-    // Show translated text for text-based modes, raw description for image modes
-    val displayText = when (documentMode) {
-        TranslatorMode.TEXT, TranslatorMode.PDF_TEXT -> translatedText
-        TranslatorMode.IMAGE, TranslatorMode.PDF_IMAGE -> {
-            if (translatedText.isNotEmpty()) translatedText else objectDescription
+    val displayText = buildString {
+        if (recognizedText.isNotBlank()) {
+            append("Recognized text")
+            if (sourceLanguageName.isNotBlank()) append(" · $sourceLanguageName")
+            append("\n\n$recognizedText")
         }
-        TranslatorMode.NONE -> ""
+        if (translatedText.isNotBlank()) {
+            if (isNotEmpty()) append("\n\n")
+            append("English translation\n\n$translatedText")
+        }
+        if (isEmpty() && documentMode in setOf(TranslatorMode.IMAGE, TranslatorMode.PDF_IMAGE)) {
+            append(objectDescription)
+        }
     }
 
     Scaffold(
@@ -281,28 +301,6 @@ fun DocumentTranslatorScreen(
                 .semantics(mergeDescendants = true) {},
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Force LLM OCR Toggle
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp)
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = "Force LLM OCR for images and PDFs, currently ${if (forceLlmOcr) "enabled" else "disabled"}"
-                        },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Force LLM OCR",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = forceLlmOcr,
-                        onCheckedChange = { viewModel.setForceLlmOcr(it) }
-                    )
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -314,21 +312,28 @@ fun DocumentTranslatorScreen(
                         contentDescription = "Take photo to translate",
                         onClick = {
                             showCamera = true
-                            viewModel.startProcessing()
-                            viewModel.announceAction("Translating")
-                            captureAndAnalyzeText()
+                            viewModel.startProcessing("Translating")
+                            captureAndAnalyzeText(false)
                         },
                         enabled = !isAnalyzing && hasCameraPermission,
                         highlighted = true,
                         highlightColor = Color(0xFF4CAF50),
                     )
+                    if (onlineApiKey.isNotBlank()) {
+                        EchoSenseActionButton(
+                            icon = Icons.Default.Cloud,
+                            label = "Online",
+                            contentDescription = "Translate using ${onlineProvider.displayName}",
+                            onClick = { confirmOnlineTranslation = true },
+                            enabled = !isAnalyzing && hasCameraPermission,
+                        )
+                    }
                     EchoSenseActionButton(
                         icon = Icons.Default.UploadFile,
                         label = "Upload",
                         contentDescription = "Upload file to translate",
                         onClick = {
                             showCamera = false
-                            viewModel.announceAction("Translating")
                             filePickerLauncher.launch(arrayOf("text/*", "application/pdf", "image/*"))
                         },
                     )
@@ -349,6 +354,32 @@ fun DocumentTranslatorScreen(
     // Language pack management dialog
     if (showLanguageDialog) {
         LanguagePackDialog(onDismiss = { showLanguageDialog = false })
+    }
+    if (confirmOnlineTranslation) {
+        AlertDialog(
+            onDismissRequest = { confirmOnlineTranslation = false },
+            title = { Text("Use ${onlineProvider.displayName} translation?") },
+            text = {
+                Text(
+                    "EchoSense will recognize text on this device first and send the recognized " +
+                        "text for translation. If text recognition fails, the image will be sent. " +
+                        "Provider charges may apply."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmOnlineTranslation = false
+                    AppSettings.onlineConsentGranted.value = true
+                    modelManagerViewModel.saveEchoSenseSettings()
+                    showCamera = true
+                    viewModel.startProcessing("Translating online")
+                    captureAndAnalyzeText(true)
+                }) { Text("Use Online") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmOnlineTranslation = false }) { Text("Cancel") }
+            },
+        )
     }
     // Debug Overlay & Model Status Toast
     val activeModelName by viewModel.activeModelName.collectAsState()
@@ -401,7 +432,8 @@ fun LanguagePackDialog(onDismiss: () -> Unit) {
         text = {
             Column {
                 Text(
-                    "Download language packs for offline translation. English is always available.",
+                    "Offline translation is validated for English, Spanish, French, and German. " +
+                        "Use online translation for other languages. English is always available.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)

@@ -35,8 +35,8 @@ android {
     applicationId = "com.terranettechnologies.echosense"
     minSdk = 31
     targetSdk = 36
-    versionCode = 18
-    versionName = "1.1.0"
+    versionCode = 20
+    versionName = "1.1.1"
     ndk {
       abiFilters.add("arm64-v8a")
     }

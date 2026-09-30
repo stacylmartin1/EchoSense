@@ -151,7 +151,7 @@ abstract class EchoSenseBaseViewModel(
 
         override fun onError(error: Int) {
             viewModelScope.launch {
-                _error.value = "Voice command error: $error"
+                reportOperationFailure("Voice command was not recognized. Please try again.")
             }
         }
     }
@@ -164,11 +164,7 @@ abstract class EchoSenseBaseViewModel(
 
     // ---- Status change announcement tracking ----
 
-    private var missingModelAnnounced = false
-    private var modelDownloadAnnounced = false
-    private var modelLoadingAnnounced = false
-    private var readyAnnounced = false
-    private var statusAnnouncementModelName: String? = null
+    private val modelStatusAnnouncements = ModelStatusAnnouncementTracker()
     protected var analyzingAnnounced = false
 
     // ---- Abstract / open members ----
@@ -200,6 +196,13 @@ abstract class EchoSenseBaseViewModel(
     /** Whether this ViewModel uses the camera. */
     open val supportsCamera: Boolean = true
 
+    /**
+     * Whether raw model tokens may be shown and spoken as they arrive. Features such as
+     * currency identification disable this so a structured, unvalidated model response is
+     * never announced before deterministic post-processing.
+     */
+    protected open val streamsAnalysisToUser: Boolean = true
+
     // ---- Public API ----
 
     fun setModel(model: Model) {
@@ -214,7 +217,7 @@ abstract class EchoSenseBaseViewModel(
         onCaptureImageCallback = callback
     }
 
-    fun startProcessing() {
+    fun startProcessing(announcement: String? = null) {
         Log.d(TAG, "Starting single-shot processing")
 
         cancelInferenceJob()
@@ -231,6 +234,11 @@ abstract class EchoSenseBaseViewModel(
 
         _isProcessing.value = true
 
+        if (!announcement.isNullOrBlank()) {
+            analyzingAnnounced = true
+            ttsPlayer.announceStatus(announcement)
+        }
+
         val generation = System.nanoTime()
         processingGeneration = generation
 
@@ -238,16 +246,16 @@ abstract class EchoSenseBaseViewModel(
         Log.d(TAG, "Single-shot processing started with clean state")
     }
 
-    fun startOnlineProcessing() {
+    fun startOnlineProcessing(announcement: String? = null) {
         forceOnlineNext = true
         forceLocalNext = false
-        startProcessing()
+        startProcessing(announcement)
     }
 
-    fun startOnDeviceProcessing() {
+    fun startOnDeviceProcessing(announcement: String? = null) {
         forceLocalNext = true
         forceOnlineNext = false
-        startProcessing()
+        startProcessing(announcement)
     }
 
     fun stopProcessing() {
@@ -301,13 +309,19 @@ abstract class EchoSenseBaseViewModel(
     fun stopSpeaking() {
         Log.d(TAG, "UI requested to stop speaking, delegating to stopProcessing()")
         stopProcessing()
+        ttsPlayer.announceStatus("Stopped.")
     }
 
-    /** Speak a brief action announcement (e.g. "Translating") with QUEUE_FLUSH.
-     *  Also marks the analyzing announcement as done so the generic "Analyzing"
-     *  announcement from [checkAndAnnounceStatusChanges] is suppressed. */
+    /** Speak a brief action announcement (for actions that do not start model processing). */
     fun announceAction(message: String) {
-        analyzingAnnounced = true
+        if (_isProcessing.value) analyzingAnnounced = true
+        ttsPlayer.announceStatus(message)
+    }
+
+    /** Stop the active operation and make its failure audible as well as visible. */
+    fun reportOperationFailure(message: String) {
+        _error.value = message
+        stopProcessing()
         ttsPlayer.announceStatus(message)
     }
 
@@ -319,11 +333,14 @@ abstract class EchoSenseBaseViewModel(
         val command = _pendingVoiceCommand.value ?: return
         _pendingVoiceCommand.value = null
         customPrompt = command
-        if (useOnline) startOnlineProcessing() else startOnDeviceProcessing()
+        if (useOnline) {
+            startOnlineProcessing("Analyzing request")
+        } else {
+            startOnDeviceProcessing("Analyzing request")
+        }
         onCaptureImageCallback?.invoke() ?: run {
             Log.w(TAG, "Image capture callback not set, cannot capture image for voice command")
-            _error.value = "Unable to capture image for voice command"
-            stopProcessing()
+            reportOperationFailure("Unable to capture an image for the voice request.")
         }
     }
 
@@ -338,18 +355,6 @@ abstract class EchoSenseBaseViewModel(
         isModelReady: Boolean,
         isAnalyzing: Boolean,
     ) {
-        if (statusAnnouncementModelName != modelName) {
-            Log.d(
-                TAG,
-                "Status model changed from $statusAnnouncementModelName to $modelName; " +
-                    "resetting one-time model announcements",
-            )
-            statusAnnouncementModelName = modelName
-            missingModelAnnounced = false
-            modelDownloadAnnounced = false
-            modelLoadingAnnounced = false
-            readyAnnounced = false
-        }
         Log.d(
             TAG,
             "checkAndAnnounceStatusChanges: model=$modelName installed=$isModelInstalled " +
@@ -357,27 +362,19 @@ abstract class EchoSenseBaseViewModel(
         )
 
         if (!isAnalyzing && !_isProcessing.value) {
-            when {
-                isModelReady && !readyAnnounced -> {
-                    Log.d(TAG, "Model became ready, announcing once")
-                    readyAnnounced = true
-                    ttsPlayer.announceStatus(READY_ANNOUNCEMENT)
-                }
-                isModelInstalled && !modelLoadingAnnounced -> {
-                    Log.d(TAG, "Installed model is initializing, announcing once")
-                    modelLoadingAnnounced = true
-                    ttsPlayer.announceStatus(MODEL_LOADING_ANNOUNCEMENT)
-                }
-                isModelDownloadInProgress && !modelDownloadAnnounced -> {
-                    Log.d(TAG, "Model download is active, announcing once")
-                    modelDownloadAnnounced = true
-                    ttsPlayer.announceStatus(MODEL_DOWNLOADING_ANNOUNCEMENT)
-                }
-                !isModelInstalled && !isModelDownloadInProgress && !missingModelAnnounced -> {
-                    Log.d(TAG, "No on-device model is installed, announcing once")
-                    missingModelAnnounced = true
-                    ttsPlayer.announceStatus(MISSING_MODEL_ANNOUNCEMENT)
-                }
+            when (
+                modelStatusAnnouncements.nextAnnouncement(
+                    currentModelName = modelName,
+                    isModelInstalled = isModelInstalled,
+                    isModelDownloadInProgress = isModelDownloadInProgress,
+                    isModelReady = isModelReady,
+                )
+            ) {
+                ModelStatusAnnouncement.READY -> ttsPlayer.announceStatus(READY_ANNOUNCEMENT)
+                ModelStatusAnnouncement.LOADING -> ttsPlayer.announceStatus(MODEL_LOADING_ANNOUNCEMENT)
+                ModelStatusAnnouncement.DOWNLOADING -> ttsPlayer.announceStatus(MODEL_DOWNLOADING_ANNOUNCEMENT)
+                ModelStatusAnnouncement.MISSING -> ttsPlayer.announceStatus(MISSING_MODEL_ANNOUNCEMENT)
+                null -> Unit
             }
         }
 
@@ -385,11 +382,6 @@ abstract class EchoSenseBaseViewModel(
             Log.d(TAG, "Analysis started, announcing immediately")
             analyzingAnnounced = true
             ttsPlayer.announceStatus("Analyzing")
-        }
-
-        if (!isAnalyzing && analyzingAnnounced) {
-            Log.d(TAG, "Analysis stopped, resetting analyzing announcement flag")
-            analyzingAnnounced = false
         }
 
     }
@@ -440,9 +432,8 @@ abstract class EchoSenseBaseViewModel(
 
         val model = currentModel
         if (model == null) {
-            _error.value = "Model not set. Please wait for model to be selected."
             imageProxy.close()
-            stopProcessing()
+            reportOperationFailure("The model is not ready. Please wait and try again.")
             return
         }
 
@@ -453,7 +444,7 @@ abstract class EchoSenseBaseViewModel(
             if (srcBitmap != null) {
                 val rotation = try { imageProxy.imageInfo.rotationDegrees } catch (e: Exception) { 0 }
                 val rotated = rotateBitmapIfNeeded(srcBitmap, rotation)
-                bitmap = scaleBitmapToMaxSize(rotated, LLM_MAX_IMAGE_SIZE)
+                bitmap = rotated
                 Log.d(TAG, "Bitmap created: src=${srcBitmap.width}x${srcBitmap.height}, rotation=${rotation}, final=${bitmap.width}x${bitmap.height}")
                 // Close camera buffer immediately after extracting bitmap to avoid gralloc unlock* warnings
                 try {
@@ -464,16 +455,14 @@ abstract class EchoSenseBaseViewModel(
                 }
             } else {
                 Log.e(TAG, "Failed to convert ImageProxy to bitmap")
-                _error.value = "Unable to process camera image"
                 imageProxy.close()
-                stopProcessing()
+                reportOperationFailure("Unable to process the camera image. Please try again.")
                 return
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error creating Bitmap from ImageProxy", e)
-            _error.value = "Error processing camera image: ${e.message}"
             imageProxy.close()
-            stopProcessing()
+            reportOperationFailure("Unable to process the camera image. Please try again.")
             return
         }
 
@@ -507,8 +496,7 @@ abstract class EchoSenseBaseViewModel(
     ) {
         val model = currentModel
         if (model == null) {
-            _error.value = "Model not set. Please wait for model to be selected."
-            stopProcessing()
+            reportOperationFailure("The model is not ready. Please wait and try again.")
             return
         }
 
@@ -564,10 +552,10 @@ abstract class EchoSenseBaseViewModel(
                             AppSettings.onlineUsageMode.value == OnlineUsageMode.FALLBACK
                         ) {
                             Log.d(TAG, "Local model unavailable; using configured online fallback")
+                            announceAction("On-device analysis is unavailable. Trying online analysis.")
                             analyzeBitmapOnline(scaledBitmap, sensorSnapshot = sensorSnapshot)
                         } else {
-                            _error.value = "Model not ready. Please wait for model to initialize."
-                            stopProcessing()
+                            reportOperationFailure("The model is still loading. Wait for ready and try again.")
                         }
                         return@launch
                     }
@@ -618,20 +606,24 @@ abstract class EchoSenseBaseViewModel(
 
                             if (partialResult.isNotEmpty()) {
                                 llmTextBuffer.append(partialResult)
-                                _objectDescription.value = llmTextBuffer.toString()
-                                sentenceChunker.onToken(partialResult)
-                                drainChunkerToTts()
+                                if (streamsAnalysisToUser) {
+                                    _objectDescription.value = llmTextBuffer.toString()
+                                    sentenceChunker.onToken(partialResult)
+                                    drainChunkerToTts()
+                                }
                             }
 
                             if (done) {
                                 _isAnalyzing.value = false
                                 inferenceJob = null
-                                sentenceChunker.onDone()
-                                drainChunkerToTts()
                                 val finalText = llmTextBuffer.toString()
                                 Log.d(TAG, "LLM analysis complete, final text: '$finalText'")
-                                promptOnlineAfterSpeech.set(finalText.isNotBlank())
-                                ttsPlayer.markInputComplete()
+                                if (streamsAnalysisToUser) {
+                                    sentenceChunker.onDone()
+                                    drainChunkerToTts()
+                                    promptOnlineAfterSpeech.set(finalText.isNotBlank())
+                                    ttsPlayer.markInputComplete()
+                                }
                                 onAnalysisComplete(finalText)
                             }
                         }
@@ -648,18 +640,17 @@ abstract class EchoSenseBaseViewModel(
                             AppSettings.onlineUsageMode.value == OnlineUsageMode.FALLBACK
                         ) {
                             Log.d(TAG, "Local analysis failed; using configured online fallback")
+                            announceAction("On-device analysis failed. Trying online analysis.")
                             analyzeBitmapOnline(scaledBitmap, prompt)
                         } else {
-                            _error.value = "Error: $errorMessage"
-                            stopProcessing()
+                            reportOperationFailure("Analysis failed. Please try again.")
                         }
                     }
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Error firing usage or launching inference", e)
-                _error.value = "Error analyzing image: ${e.message}"
                 _isAnalyzing.value = false
-                stopProcessing()
+                reportOperationFailure("Unable to analyze the image. Please try again.")
             }
         }
     }
@@ -671,8 +662,7 @@ abstract class EchoSenseBaseViewModel(
     ) {
         if (!_isProcessing.value || _isAnalyzing.value) return
         if (!OnlineAnalysisHelper.isAvailable()) {
-            _error.value = "Online analysis is not connected."
-            stopProcessing()
+            reportOperationFailure("Online analysis is not connected.")
             return
         }
         val isVerbose = AppSettings.llmResponseStyle.value == LlmResponseStyle.VERBOSE
@@ -687,10 +677,12 @@ abstract class EchoSenseBaseViewModel(
             try {
                 val result = OnlineAnalysisHelper.analyzeImage(bitmap, prompt)
                 if (!_isProcessing.value) return@launch
-                _objectDescription.value = result
                 _isAnalyzing.value = false
                 inferenceJob = null
-                speakText(result)
+                if (streamsAnalysisToUser) {
+                    _objectDescription.value = result
+                    speakText(result)
+                }
                 onAnalysisComplete(result)
             } catch (e: CancellationException) {
                 throw e
@@ -700,10 +692,10 @@ abstract class EchoSenseBaseViewModel(
                 inferenceJob = null
                 if (currentModel?.instance != null && _isProcessing.value) {
                     _error.value = "Online analysis unavailable. Using the on-device model."
+                    announceAction("Online analysis is unavailable. Using the on-device model.")
                     analyzeBitmap(bitmap, forceLocal = true, promptOverride = prompt)
                 } else {
-                    _error.value = e.message ?: "Online analysis failed"
-                    stopProcessing()
+                    reportOperationFailure("Online analysis failed. Please try again.")
                 }
             }
         }
@@ -904,6 +896,13 @@ abstract class EchoSenseBaseViewModel(
 
     fun toggleCollisionAvoidance() {
         _isCollisionAvoidanceEnabled.value = !_isCollisionAvoidanceEnabled.value
+        announceAction(
+            if (_isCollisionAvoidanceEnabled.value) {
+                "Safety alerts on."
+            } else {
+                "Safety alerts off."
+            },
+        )
         if (!_isCollisionAvoidanceEnabled.value) {
             _proximityBoxes.value = emptyList()
             _proximityBest.value = null
@@ -999,9 +998,7 @@ abstract class EchoSenseBaseViewModel(
     }
 
     fun reportDepthCameraNotReady() {
-        _error.value = "Depth camera is starting. Please try again."
-        stopProcessing()
-        ttsPlayer.announceStatus("Depth camera is starting. Please try again.")
+        reportOperationFailure("Depth camera is starting. Please try again.")
     }
 
     /**

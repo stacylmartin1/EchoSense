@@ -85,7 +85,7 @@ fun CurrencyModeScreen(
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val imageCapture = remember {
         ImageCapture.Builder()
-            .setTargetResolution(android.util.Size(768, 768))
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .build()
     }
 
@@ -94,7 +94,10 @@ fun CurrencyModeScreen(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(imageProxy: ImageProxy) { viewModel.analyzeImage(imageProxy) }
-                override fun onError(exception: ImageCaptureException) { Log.e(TAG, "Capture failed", exception) }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "Capture failed", exception)
+                    viewModel.reportOperationFailure("Unable to capture the bank note. Please try again.")
+                }
             }
         )
     }
@@ -139,7 +142,7 @@ fun CurrencyModeScreen(
         viewModel.setImageCaptureCallback { captureAndAnalyze() }
     }
 
-    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing) {
+    LaunchedEffect(selectedModel.name, modelDownloadStatus, isModelReady, isAnalyzing, isProcessing) {
         if (modelDownloadStatus != null) {
             viewModel.checkAndAnnounceStatusChanges(
                 modelName = selectedModel.name,
@@ -178,7 +181,12 @@ fun CurrencyModeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Currency Identifier") },
+                title = {
+                    Column {
+                        Text("Currency Identifier")
+                        Text("USD · CAD · EUR · GBP · CHF", style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
+                    }
+                },
             )
         }
     ) { paddingValues ->
@@ -222,8 +230,7 @@ fun CurrencyModeScreen(
                     label = "Identify",
                     contentDescription = if (!isModelReady) "Model loading, please wait" else if (isAnalyzing) "Identifying currency" else "Capture and identify bank note",
                     onClick = {
-                        viewModel.startProcessing()
-                        viewModel.announceAction("Identifying currency")
+                        viewModel.startProcessing("Identifying currency")
                         captureAndAnalyze()
                     },
                     enabled = !isAnalyzing && isModelReady,

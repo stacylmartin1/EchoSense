@@ -1,5 +1,20 @@
+# ====================================================================
+# Package managers and local task artifacts
+# ====================================================================
 node_modules/
-.DS_Store
+.pnpm-store/
+.npm/
+.yarn/cache/
+
+# These files were produced by local publishing/automation tasks and are
+# unrelated to the Android and iOS applications.
+/admin_post.py
+/journal_state/
+/package.json
+/pnpm-lock.yaml
+/product-page-content.txt
+
+output/
 # ====================================================================
 # Android Studio & IntelliJ IDEA
 # ====================================================================
@@ -26,6 +41,7 @@ captures/
 .externalNativeBuild/
 .cxx/
 local.properties
+/Android/gradle/gradle-daemon-jvm.properties
 
 # Gradle Signing (if using property-based signing)
 signing.properties
@@ -38,11 +54,25 @@ play-services-json.properties
 *.class
 
 # ====================================================================
+# Xcode, Swift, and Apple build products
+# ====================================================================
+DerivedData/
+.build/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.xcarchive
+*.dSYM/
+*.dSYM.zip
+*.ipa
+
+# ====================================================================
 # Secrets, Environment, and API Keys
 # ====================================================================
 # If you keep secrets in explicit files, uncomment these:
 # secrets.properties
-# .env
+.env
 
 # ====================================================================
 # Ndk-build / CMake
@@ -68,6 +98,9 @@ Desktop.ini
 # ====================================================================
 *.log
 lint/reports/
+*.tmp
+*.swp
+*~
 
 # ====================================================================
 # LLM and NN Model Files

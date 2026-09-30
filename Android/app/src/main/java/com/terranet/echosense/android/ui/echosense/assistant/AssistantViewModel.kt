@@ -25,6 +25,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.terranet.echosense.android.data.Model
 import com.terranet.echosense.android.ui.echosense.NativeTtsQueuePlayer
+import com.terranet.echosense.android.ui.echosense.ModelStatusAnnouncement
+import com.terranet.echosense.android.ui.echosense.ModelStatusAnnouncementTracker
 import com.terranet.echosense.android.ui.echosense.OnlineAnalysisHelper
 import com.terranet.echosense.android.ui.echosense.StreamingSentenceChunker
 import com.terranet.echosense.android.ui.echosense.VoiceCommandHelper
@@ -63,11 +65,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
   private var model: Model? = null
   private var cloudJob: Job? = null
   private var resetFallbackJob: Job? = null
-  private var missingModelAnnounced = false
-  private var modelDownloadAnnounced = false
-  private var modelLoadingAnnounced = false
-  private var modelReadyAnnounced = false
-  private var statusAnnouncementModelName: String? = null
+  private val modelStatusAnnouncements = ModelStatusAnnouncementTracker()
   private var documentText = ""
   private var attachmentSentToLocalConversation = false
   private val speechChunker = StreamingSentenceChunker()
@@ -111,32 +109,24 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
     isModelDownloadInProgress: Boolean,
     isModelReady: Boolean,
   ) {
-    if (statusAnnouncementModelName != modelName) {
-      statusAnnouncementModelName = modelName
-      missingModelAnnounced = false
-      modelDownloadAnnounced = false
-      modelLoadingAnnounced = false
-      modelReadyAnnounced = false
-    }
-    when {
-      isModelReady && !modelReadyAnnounced -> {
-        modelReadyAnnounced = true
-        tts.announceStatus("Ready.")
-      }
-      isModelInstalled && !modelLoadingAnnounced -> {
-        modelLoadingAnnounced = true
+    if (_isProcessing.value || _isResetting.value) return
+    when (
+      modelStatusAnnouncements.nextAnnouncement(
+        currentModelName = modelName,
+        isModelInstalled = isModelInstalled,
+        isModelDownloadInProgress = isModelDownloadInProgress,
+        isModelReady = isModelReady,
+      )
+    ) {
+      ModelStatusAnnouncement.READY -> tts.announceStatus("Ready.")
+      ModelStatusAnnouncement.LOADING ->
         tts.announceStatus("On-device model loading. Wait for ready.")
-      }
-      isModelDownloadInProgress && !modelDownloadAnnounced -> {
-        modelDownloadAnnounced = true
+      ModelStatusAnnouncement.DOWNLOADING ->
         tts.announceStatus("On-device model download in progress.")
-      }
-      !isModelInstalled && !isModelDownloadInProgress && !missingModelAnnounced -> {
-        missingModelAnnounced = true
-        tts.announceStatus(
-          "Download an on-device model in Settings to enable offline analysis."
-        )
-      }
+      ModelStatusAnnouncement.MISSING -> tts.announceStatus(
+        "Download an on-device model in Settings to enable offline analysis."
+      )
+      null -> Unit
     }
   }
 
@@ -166,7 +156,9 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
 
   override fun onError(error: Int) {
     _isListening.value = false
-    _error.value = "No voice command received"
+    val message = "No voice command received. Please try again."
+    _error.value = message
+    tts.announceStatus(message)
   }
 
   fun send(rawText: String) {
@@ -179,6 +171,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
     _isProcessing.value = true
     val version = turnVersion.incrementAndGet()
     tts.stop()
+    tts.announceStatus("Thinking.")
     speechChunker.clear()
 
     val canCloud = OnlineAnalysisHelper.isAvailable() && AppSettings.onlineConsentGranted.value
@@ -285,6 +278,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
     if (turnVersion.get() != version) return
     if (response.isBlank()) {
       _isProcessing.value = false
+      tts.announceStatus("No response was generated. Please try again.")
       return
     }
     tts.queueSentence(response)
@@ -297,6 +291,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
     speakReadyChunks()
     if (response.isBlank()) {
       _isProcessing.value = false
+      tts.announceStatus("No response was generated. Please try again.")
       return
     }
     tts.markInputComplete()
@@ -313,9 +308,11 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
     updateMessage(id, message)
     _error.value = message
     _isProcessing.value = false
+    tts.announceStatus(message)
   }
 
-  fun stop() {
+  fun stop(announce: Boolean = true) {
+    val wasActive = _isProcessing.value || _isListening.value
     turnVersion.incrementAndGet()
     cloudJob?.cancel()
     cloudJob = null
@@ -323,13 +320,15 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
     try { (model?.instance as? LlmModelInstance)?.conversation?.cancelProcess() } catch (_: Exception) {}
     tts.stop()
     _isProcessing.value = false
+    _isListening.value = false
+    if (announce && wasActive) tts.announceStatus("Stopped.")
   }
 
   fun newChat() {
     val waitForNativeCancellation = localGenerationActive.get()
     conversationResetRequested.set(true)
     _isResetting.value = true
-    stop()
+    stop(announce = false)
     _messages.value = emptyList()
     _error.value = null
     _activeModelName.value =
@@ -337,6 +336,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
       else model?.name
     clearAttachment()
     attachmentSentToLocalConversation = false
+    tts.announceStatus("New chat ready.")
     if (waitForNativeCancellation) {
       resetFallbackJob?.cancel()
       resetFallbackJob = viewModelScope.launch {
@@ -387,8 +387,11 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
         _attachmentName.value = name
         attachmentSentToLocalConversation = false
         _error.value = null
+        tts.announceStatus("Attachment ready.")
       } catch (e: Exception) {
-        _error.value = "Unable to open attachment: ${e.message}"
+        val message = "Unable to open the attachment."
+        _error.value = message
+        tts.announceStatus(message)
       }
     }
   }
@@ -414,7 +417,7 @@ class AssistantViewModel @Inject constructor(private val app: Application) : And
 
   override fun onCleared() {
     resetFallbackJob?.cancel()
-    stop()
+    stop(announce = false)
     voice.destroy()
     tts.shutdown()
     super.onCleared()
