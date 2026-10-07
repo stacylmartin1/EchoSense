@@ -27,6 +27,8 @@ import com.terranet.echosense.android.ui.echosense.VisualUtilityAnalyzer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -38,6 +40,23 @@ class CurrencyModeViewModel @Inject constructor(
     override val streamsAnalysisToUser: Boolean = false
 
     private var pendingEvidence = CurrencyOcrEvidence("", emptySet(), emptySet(), 0f)
+    private val scanStabilizer = CurrencyScanStabilizer()
+    private val _isContinuousScanning = MutableStateFlow(false)
+    val isContinuousScanning: StateFlow<Boolean> = _isContinuousScanning
+
+    fun startContinuousScan() {
+        if (_isContinuousScanning.value) return
+        scanStabilizer.reset()
+        _isContinuousScanning.value = true
+        startProcessing("Continuous currency scan on. Hold a bank note in view.")
+        _objectDescription.value = "Scanning for a stable denomination…"
+    }
+
+    override fun stopProcessing() {
+        _isContinuousScanning.value = false
+        scanStabilizer.reset()
+        super.stopProcessing()
+    }
 
     override fun analyzeImage(imageProxy: ImageProxy) {
         if (!_isProcessing.value || _isAnalyzing.value) {
@@ -67,8 +86,12 @@ class CurrencyModeViewModel @Inject constructor(
             if (qualityIssue != null) {
                 _isAnalyzing.value = false
                 val message = qualityIssue.replace("page", "bank note")
-                _objectDescription.value = message
-                speakText(message)
+                if (_isContinuousScanning.value) {
+                    _objectDescription.value = "Scanning for a stable denomination…"
+                } else {
+                    _objectDescription.value = message
+                    speakText(message)
+                }
                 return@launch
             }
 
@@ -105,8 +128,18 @@ class CurrencyModeViewModel @Inject constructor(
                 "usable=${visual?.imageUsable}, unsupported=${visual?.explicitlyUnsupported}",
         )
         val decision = CurrencyDecisionEngine.decide(pendingEvidence, visual)
-        _objectDescription.value = decision.spokenText
-        speakText(decision.spokenText)
+        if (_isContinuousScanning.value) {
+            val stableResult = scanStabilizer.observe(decision, System.currentTimeMillis())
+            if (stableResult != null) {
+                _objectDescription.value = stableResult
+                announceAction(stableResult)
+            } else if (decision.kind != CurrencyDecisionKind.IDENTIFIED) {
+                _objectDescription.value = "Scanning for a stable denomination…"
+            }
+        } else {
+            _objectDescription.value = decision.spokenText
+            speakText(decision.spokenText)
+        }
     }
 
     override fun getAnalysisPrompt(customPrompt: String?, isVerbose: Boolean): String {

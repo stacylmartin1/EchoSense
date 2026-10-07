@@ -98,6 +98,8 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   @Published var instantTextLanguage: OCRLanguageOption = .automatic
   @Published var guidedDocumentEnabled = false
   @Published var guidedDocumentStatus = ""
+  @Published var currencyScanEnabled = false
+  @Published var currencyScanStatus = ""
   @Published private(set) var isNetworkAvailable = false
 
   let camera = CameraFrameSource()
@@ -133,6 +135,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var analysisTask: Task<Void, Never>?
   private var instantTextTask: Task<Void, Never>?
   private var guidedDocumentTask: Task<Void, Never>?
+  private var currencyScanTask: Task<Void, Never>?
   private var localModelLoadTask: Task<Void, Never>?
   private var hasAttemptedPersistedModelLoad = false
   private var stagedLocalModelURL: URL?
@@ -155,6 +158,9 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
   private var guidedDocumentGuidanceCount = 0
   private var lastGuidedDocumentAnnouncementTime: Date = .distantPast
   private var guidedDocumentManualCapturePending = false
+  private var lastCurrencyScanFrameTime: Date = .distantPast
+  private var currencyScanStabilizer = CurrencyScanStabilizer()
+  private var currencyScanGeneration = 0
 
   init(feature: EchoSenseFeature) {
     self.feature = feature
@@ -209,6 +215,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
 
     stopInstantText(announce: false)
     stopGuidedDocumentCapture(announce: false)
+    stopContinuousCurrencyScan(announce: false)
     feature = newFeature
     voiceCommands.stop()
     isListeningForVoiceCommand = false
@@ -263,6 +270,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     analysisTask?.cancel()
     stopInstantText(announce: false)
     stopGuidedDocumentCapture(announce: false)
+    stopContinuousCurrencyScan(announce: false)
     voiceCommands.stop()
     isListeningForVoiceCommand = false
     pendingNavigationVoiceCommand = nil
@@ -726,6 +734,10 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
       return
     }
 
+    if currencyScanEnabled || currencyScanTask != nil {
+      stopContinuousCurrencyScan()
+      return
+    }
     if instantTextEnabled {
       stopInstantText()
       speech.stop()
@@ -746,6 +758,39 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     startupAnnouncementTask?.cancel()
     speech.stop()
     announceAccessibility("Stopped.")
+  }
+
+  func startContinuousCurrencyScan(settings: AppSettings) {
+    guard feature == .currency, isModelReady, !currencyScanEnabled, !isAnalyzing else { return }
+    beginUserInitiatedWork()
+    self.settings = settings
+    currencyScanGeneration += 1
+    currencyScanStabilizer.reset()
+    lastCurrencyScanFrameTime = .distantPast
+    currencyScanEnabled = true
+    currencyScanStatus = "Scanning for a stable denomination"
+    transcript = ""
+    let message = "Continuous currency scan on. Hold a bank note in view."
+    speech.announce(message)
+    announceAccessibility(message)
+  }
+
+  private func stopContinuousCurrencyScan(announce: Bool = true) {
+    let wasActive = currencyScanEnabled || currencyScanTask != nil
+    guard wasActive else { return }
+    currencyScanGeneration += 1
+    currencyScanEnabled = false
+    currencyScanTask?.cancel()
+    currencyScanTask = nil
+    localLLM.cancelGeneration()
+    currencyScanStatus = ""
+    currencyScanStabilizer.reset()
+    isAnalyzing = false
+    analysisStage = ""
+    guard announce else { return }
+    speech.stop()
+    speech.announce("Continuous currency scan off.")
+    announceAccessibility("Continuous currency scan off.")
   }
 
   func toggleInstantText() {
@@ -1065,7 +1110,7 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
 
       case .currency:
         try Task.checkCancellation()
-        try await runCurrencyAnalysis(
+        _ = try await runCurrencyAnalysis(
           image: image,
           settings: settings,
           forceOnline: forceOnline,
@@ -1383,13 +1428,17 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     image: UIImage,
     settings: AppSettings,
     forceOnline: Bool,
-    forceLocal: Bool
-  ) async throws {
+    forceLocal: Bool,
+    announceResult: Bool = true
+  ) async throws -> CurrencyDecisionResult {
     if let qualityIssue = VisualUtilityAnalyzer.textCaptureIssue(in: image) {
       let message = qualityIssue.replacingOccurrences(of: "page", with: "bank note")
-      transcript = message
-      speakResult(message, accessibilitySummary: "A clearer bank note image is needed.")
-      return
+      let decision = CurrencyDecisionResult(kind: .unrecognized, spokenText: message)
+      if announceResult {
+        transcript = message
+        speakResult(message, accessibilitySummary: "A clearer bank note image is needed.")
+      }
+      return decision
     }
 
     analysisStage = "Reading bank note text"
@@ -1453,10 +1502,13 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     Self.logger.notice(
       "Currency vision: code=\(visual?.code ?? "none", privacy: .public), denomination=\(visual?.denomination ?? 0, privacy: .public), usable=\(visual?.imageUsable ?? false, privacy: .public), unsupported=\(visual?.explicitlyUnsupported ?? false, privacy: .public)"
     )
-    let result = CurrencyDecision.spokenText(evidence: evidence, visual: visual)
-    transcript = result
-    speakResult(result, accessibilitySummary: "Currency analysis complete.")
-    await speech.waitUntilFinished()
+    let decision = CurrencyDecision.evaluate(evidence: evidence, visual: visual)
+    if announceResult {
+      transcript = decision.spokenText
+      speakResult(decision.spokenText, accessibilitySummary: "Currency analysis complete.")
+      await speech.waitUntilFinished()
+    }
+    return decision
   }
 
   private func runVisionAnalysis(
@@ -1871,6 +1923,58 @@ final class EchoSenseSessionViewModel: NSObject, ObservableObject {
     candidateAlertSince = nil
   }
 
+  private func submitCurrencyScanFrameIfNeeded() {
+    guard feature == .currency,
+          currencyScanEnabled,
+          currencyScanTask == nil,
+          !isAnalyzing,
+          Date().timeIntervalSince(lastCurrencyScanFrameTime) >= 1.5,
+          let settings,
+          let sampleBuffer = latestSampleBuffer,
+          let image = camera.captureCurrentFrameImage(from: sampleBuffer) else { return }
+
+    lastCurrencyScanFrameTime = Date()
+    isAnalyzing = true
+    currencyScanStatus = "Checking bank note"
+    let scanGeneration = currencyScanGeneration
+    currencyScanTask = Task { [weak self] in
+      guard let self else { return }
+      defer {
+        if scanGeneration == currencyScanGeneration {
+          currencyScanTask = nil
+          isAnalyzing = false
+          analysisStage = ""
+        }
+      }
+      do {
+        let decision = try await runCurrencyAnalysis(
+          image: image,
+          settings: settings,
+          forceOnline: false,
+          forceLocal: false,
+          announceResult: false
+        )
+        try Task.checkCancellation()
+        guard currencyScanEnabled, scanGeneration == currencyScanGeneration else { return }
+        if let stableResult = currencyScanStabilizer.observe(decision) {
+          transcript = stableResult
+          currencyScanStatus = "Denomination recognized"
+          speech.announce(stableResult)
+          announceAccessibility(stableResult)
+        } else if decision.kind == .identified {
+          currencyScanStatus = "Confirming denomination. Hold steady"
+        } else {
+          currencyScanStatus = "Scanning for a stable denomination"
+        }
+      } catch is CancellationError {
+      } catch {
+        guard currencyScanEnabled, scanGeneration == currencyScanGeneration else { return }
+        currencyScanStatus = "Scanning for a stable denomination"
+        errorMessage = error.localizedDescription
+      }
+    }
+  }
+
   private func submitInstantTextFrameIfNeeded() {
     guard feature == .documentReader,
           instantTextEnabled,
@@ -2194,6 +2298,7 @@ extension EchoSenseSessionViewModel: CameraFrameSourceDelegate {
     Task { @MainActor in
       guard isActive else { return }
       latestSampleBuffer = sampleBuffer
+      submitCurrencyScanFrameIfNeeded()
       submitInstantTextFrameIfNeeded()
       submitGuidedDocumentFrameIfNeeded()
       if feature.supportsCollisionAvoidance && collisionAvoidanceAvailable && collisionAvoidanceEnabled {

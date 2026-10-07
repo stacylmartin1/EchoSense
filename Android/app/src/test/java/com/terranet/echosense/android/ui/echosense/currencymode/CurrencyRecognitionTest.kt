@@ -154,4 +154,52 @@ class CurrencyRecognitionTest {
         assertEquals(setOf("USD"), evidence.countryCodes)
         assertEquals(setOf(20), evidence.denominations)
     }
+
+    @Test
+    fun `continuous scan requires repeated matching identifications`() {
+        val stabilizer = CurrencyScanStabilizer(requiredMatches = 2)
+        val twenty = CurrencyDecision(
+            CurrencyDecisionKind.IDENTIFIED,
+            "20 US Dollars.",
+            code = "USD",
+            denomination = 20,
+        )
+
+        assertEquals(null, stabilizer.observe(twenty, nowMillis = 1_000L))
+        assertEquals("20 US Dollars.", stabilizer.observe(twenty, nowMillis = 2_000L))
+    }
+
+    @Test
+    fun `continuous scan debounces a denomination that remains in view`() {
+        val stabilizer = CurrencyScanStabilizer(requiredMatches = 2, duplicateDebounceMillis = 5_000L)
+        val twenty = CurrencyDecision(
+            CurrencyDecisionKind.IDENTIFIED,
+            "20 US Dollars.",
+            code = "USD",
+            denomination = 20,
+        )
+
+        stabilizer.observe(twenty, nowMillis = 1_000L)
+        assertEquals("20 US Dollars.", stabilizer.observe(twenty, nowMillis = 2_000L))
+        assertEquals(null, stabilizer.observe(twenty, nowMillis = 20_000L))
+    }
+
+    @Test
+    fun `continuous scan can announce same denomination after it leaves view`() {
+        val stabilizer = CurrencyScanStabilizer(requiredMatches = 2, duplicateDebounceMillis = 5_000L)
+        val twenty = CurrencyDecision(
+            CurrencyDecisionKind.IDENTIFIED,
+            "20 US Dollars.",
+            code = "USD",
+            denomination = 20,
+        )
+        val noNote = CurrencyDecision(CurrencyDecisionKind.UNRECOGNIZED, "No note.")
+
+        stabilizer.observe(twenty, nowMillis = 1_000L)
+        stabilizer.observe(twenty, nowMillis = 2_000L)
+        stabilizer.observe(noNote, nowMillis = 3_000L)
+        stabilizer.observe(twenty, nowMillis = 7_000L)
+
+        assertEquals("20 US Dollars.", stabilizer.observe(twenty, nowMillis = 8_000L))
+    }
 }
