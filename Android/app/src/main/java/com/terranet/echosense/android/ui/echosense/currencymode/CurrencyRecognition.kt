@@ -191,7 +191,62 @@ internal enum class CurrencyDecisionKind {
 internal data class CurrencyDecision(
     val kind: CurrencyDecisionKind,
     val spokenText: String,
+    val code: String? = null,
+    val denomination: Int? = null,
 )
+
+/**
+ * Requires repeated fused results before announcing a denomination and prevents a note that
+ * remains in view from producing duplicate speech. The same denomination can be announced again
+ * only after it has left the view long enough to satisfy the debounce interval.
+ */
+internal class CurrencyScanStabilizer(
+    private val requiredMatches: Int = 2,
+    private val duplicateDebounceMillis: Long = 5_000L,
+) {
+    private var candidateKey: String? = null
+    private var candidateCount = 0
+    private var lastAnnouncedKey: String? = null
+    private var lastAnnouncementMillis = Long.MIN_VALUE
+    private var sawGapSinceAnnouncement = false
+
+    fun reset() {
+        candidateKey = null
+        candidateCount = 0
+        lastAnnouncedKey = null
+        lastAnnouncementMillis = Long.MIN_VALUE
+        sawGapSinceAnnouncement = false
+    }
+
+    fun observe(decision: CurrencyDecision, nowMillis: Long): String? {
+        val code = decision.code
+        val denomination = decision.denomination
+        if (decision.kind != CurrencyDecisionKind.IDENTIFIED || code == null || denomination == null) {
+            candidateKey = null
+            candidateCount = 0
+            if (lastAnnouncedKey != null) sawGapSinceAnnouncement = true
+            return null
+        }
+
+        val key = "$code:$denomination"
+        if (key == candidateKey) {
+            candidateCount += 1
+        } else {
+            candidateKey = key
+            candidateCount = 1
+        }
+        if (candidateCount < requiredMatches) return null
+
+        val duplicateIsDebounced = key == lastAnnouncedKey &&
+            (!sawGapSinceAnnouncement || nowMillis - lastAnnouncementMillis < duplicateDebounceMillis)
+        if (duplicateIsDebounced) return null
+
+        lastAnnouncedKey = key
+        lastAnnouncementMillis = nowMillis
+        sawGapSinceAnnouncement = false
+        return decision.spokenText
+    }
+}
 
 internal object CurrencyDecisionEngine {
     fun decide(evidence: CurrencyOcrEvidence, visual: CurrencyVisualAssessment?): CurrencyDecision {
@@ -233,15 +288,19 @@ internal object CurrencyDecisionEngine {
             )
         }
         if (!countryAgrees && !denominationAgrees) {
-            return CurrencyDecision(
-                CurrencyDecisionKind.IDENTIFIED,
-                "Likely $denomination ${currency.name}.",
-            )
-        }
         return CurrencyDecision(
             CurrencyDecisionKind.IDENTIFIED,
-            "$denomination ${currency.name}.",
+            "Likely $denomination ${currency.name}.",
+            code,
+            denomination,
         )
+    }
+    return CurrencyDecision(
+        CurrencyDecisionKind.IDENTIFIED,
+        "$denomination ${currency.name}.",
+        code,
+        denomination,
+    )
     }
 }
 

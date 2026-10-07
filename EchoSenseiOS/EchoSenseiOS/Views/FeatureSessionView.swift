@@ -508,6 +508,10 @@ struct FeatureSessionView: View {
         Text(viewModel.guidedDocumentStatus)
           .foregroundStyle(.secondary)
       }
+      if !viewModel.currencyScanStatus.isEmpty {
+        Text(viewModel.currencyScanStatus)
+          .foregroundStyle(.secondary)
+      }
       if !viewModel.voiceCommandText.isEmpty {
         Text("Command: \(viewModel.voiceCommandText)")
       }
@@ -616,6 +620,9 @@ struct FeatureSessionView: View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 8) {
         primaryActionButton
+        if viewModel.feature == .currency {
+          continuousCurrencyScanButton
+        }
         if viewModel.feature == .navigation {
           voiceCommandButton
         }
@@ -683,10 +690,36 @@ struct FeatureSessionView: View {
     .buttonStyle(IconCaptionButtonStyle())
     .disabled(
       viewModel.isAnalyzing || viewModel.isListeningForVoiceCommand ||
-        viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled
+        viewModel.instantTextEnabled || viewModel.guidedDocumentEnabled ||
+        viewModel.currencyScanEnabled
     )
     .accessibilityLabel(viewModel.feature.defaultActionTitle)
     .accessibilityHint("Captures the current camera frame. When online analysis is available, asks before sending; otherwise uses the on-device model.")
+  }
+
+  private var continuousCurrencyScanButton: some View {
+    Button {
+      viewModel.startContinuousCurrencyScan(settings: settings)
+    } label: {
+      iconLabel(
+        systemName: "viewfinder",
+        title: viewModel.currencyScanEnabled ? "Scanning" : "Scan",
+        accent: viewModel.currencyScanEnabled ? .green : nil
+      )
+    }
+    .buttonStyle(IconCaptionButtonStyle())
+    .disabled(viewModel.currencyScanEnabled || viewModel.isAnalyzing || !viewModel.isModelReady)
+    .accessibilityLabel(
+      viewModel.currencyScanEnabled
+        ? "Continuous currency scan active"
+        : "Start continuous currency scan"
+    )
+    .accessibilityValue(viewModel.currencyScanEnabled ? "On" : "Off")
+    .accessibilityHint(
+      viewModel.currencyScanEnabled
+        ? "Use Stop to end continuous scanning."
+        : "Continuously checks the camera and announces a denomination after repeated matching results."
+    )
   }
 
   private var instantTextButton: some View {

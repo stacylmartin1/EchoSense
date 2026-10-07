@@ -40,6 +40,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -121,6 +122,7 @@ fun CurrencyModeScreen(
 
     val isProcessing by viewModel.isProcessing.collectAsState()
     val isAnalyzing by viewModel.isAnalyzing.collectAsState()
+    val isContinuousScanning by viewModel.isContinuousScanning.collectAsState()
     val objectDescription by viewModel.objectDescription.collectAsState()
     val videoPreviewOn by AppSettings.videoPreviewEnabled.collectAsState()
 
@@ -164,6 +166,15 @@ fun CurrencyModeScreen(
                     isModelReady = isModelReady,
                     isAnalyzing = isAnalyzing,
                 )
+            }
+        }
+    }
+
+    LaunchedEffect(isContinuousScanning, isAnalyzing, isProcessing, isModelReady) {
+        if (isContinuousScanning && isProcessing && !isAnalyzing && isModelReady) {
+            delay(1_500)
+            if (viewModel.isContinuousScanning.value && !viewModel.isAnalyzing.value) {
+                captureAndAnalyze()
             }
         }
     }
@@ -233,8 +244,21 @@ fun CurrencyModeScreen(
                         viewModel.startProcessing("Identifying currency")
                         captureAndAnalyze()
                     },
-                    enabled = !isAnalyzing && isModelReady,
+                    enabled = !isAnalyzing && !isContinuousScanning && isModelReady,
                     highlighted = true,
+                    highlightColor = Color(0xFF4CAF50),
+                )
+                EchoSenseActionButton(
+                    icon = Icons.Default.CenterFocusStrong,
+                    label = if (isContinuousScanning) "Scanning" else "Scan",
+                    contentDescription = if (isContinuousScanning) {
+                        "Continuous currency scan active. Use Stop to end scanning"
+                    } else {
+                        "Start hands-free continuous currency scan"
+                    },
+                    onClick = { viewModel.startContinuousScan() },
+                    enabled = !isContinuousScanning && !isAnalyzing && isModelReady,
+                    highlighted = isContinuousScanning,
                     highlightColor = Color(0xFF4CAF50),
                 )
                 EchoSenseActionButton(
@@ -247,8 +271,8 @@ fun CurrencyModeScreen(
                     icon = Icons.Default.Stop,
                     label = "Stop",
                     contentDescription = "Stop current analysis and speech",
-                    onClick = { viewModel.stopSpeaking(); viewModel.stopProcessing() },
-                    enabled = isProcessing || isAnalyzing,
+                    onClick = { viewModel.stopSpeaking() },
+                    enabled = isProcessing || isAnalyzing || isContinuousScanning,
                     highlighted = true,
                     highlightColor = Color(0xFFF44336),
                 )

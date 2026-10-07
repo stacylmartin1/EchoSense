@@ -6,6 +6,25 @@
 	objectVersion = 56;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		0027E0F56BD665FF9399A9B4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E00000000000000000000002 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E00000000000000000000001;
+			remoteInfo = EchoSenseiOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		723CB4CE27312F9DCF8F9078 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = EchoSenseiOS;
+			target = E00000000000000000000001 /* EchoSenseiOS */;
+			targetProxy = 0027E0F56BD665FF9399A9B4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin PBXBuildFile section */
 		041BFFB32FFCC0CF00FB8BA3 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 041BFFB22FFCC0CF00FB8BA3 /* LiteRTLM */; };
 		8B1CE075551ABFDFDEFA52CA /* Pods_EchoSenseiOS.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DE7C5FC9E65C75B6F9CC460 /* Pods_EchoSenseiOS.framework */; };
@@ -43,6 +62,7 @@
 		B00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000107 /* Services/Camera/BarcodeScannerService.swift */; };
 		B00000000000000000000108 /* Views/MagnifierView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000108 /* Views/MagnifierView.swift */; };
 		B10000000000000000000001 /* EchoSenseGenAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* EchoSenseGenAI.swift */; };
+		9B17C130F28CA9EBEC27E32A /* CurrencyRecognitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D63374232E5D38233B3974 /* CurrencyRecognitionTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +110,8 @@
 		C291FF4E39ACA1D393471BFC /* Pods_EchoSenseGenAI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_EchoSenseGenAI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA8AE2F4E7A3B2BF03602263 /* Pods-EchoSenseiOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseiOS.release.xcconfig"; path = "Target Support Files/Pods-EchoSenseiOS/Pods-EchoSenseiOS.release.xcconfig"; sourceTree = "<group>"; };
 		FA58BEEEB6699DF7A632AD61 /* Pods-EchoSenseGenAI.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EchoSenseGenAI.debug.xcconfig"; path = "Target Support Files/Pods-EchoSenseGenAI/Pods-EchoSenseGenAI.debug.xcconfig"; sourceTree = "<group>"; };
+		0108B957AD8E890F76FA1E73 /* EchoSenseiOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EchoSenseiOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		05D63374232E5D38233B3974 /* CurrencyRecognitionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CurrencyRecognitionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,6 +129,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA1DB8C8B8861BE759D107FA /* Pods_EchoSenseGenAI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4C4318D7F7E9A8A2C43C244E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -130,6 +159,7 @@
 				D00000000000000000000003 /* Products */,
 				D9DFE776448285A04A618879 /* Pods */,
 				621431C0CCE7C812E022DADE /* Frameworks */,
+				A4CD893FB139BFFE67A77C5A /* EchoSenseiOSTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -179,6 +209,7 @@
 			children = (
 				A00000000000000000000019 /* EchoSenseiOS.app */,
 				A10000000000000000000001 /* EchoSenseGenAI.framework */,
+				0108B957AD8E890F76FA1E73 /* EchoSenseiOSTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -201,6 +232,15 @@
 				BAA4D6125B706A21A64FB2E9 /* Pods-EchoSenseGenAI.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		A4CD893FB139BFFE67A77C5A /* EchoSenseiOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				05D63374232E5D38233B3974 /* CurrencyRecognitionTests.swift */,
+			);
+			name = EchoSenseiOSTests;
+			path = EchoSenseiOSTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -244,6 +284,24 @@
 			productReference = A10000000000000000000001 /* EchoSenseGenAI.framework */;
 			productType = "com.apple.product-type.framework";
 		};
+		BB32BA8C93862BB369D387B1 /* EchoSenseiOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0FC2C52D76A7F171989B2857 /* Build configuration list for PBXNativeTarget "EchoSenseiOSTests" */;
+			buildPhases = (
+				E221B45B7797E98DD2DC8F01 /* Sources */,
+				4C4318D7F7E9A8A2C43C244E /* Frameworks */,
+				01AD0C45B0D18C957ABE639B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				723CB4CE27312F9DCF8F9078 /* PBXTargetDependency */,
+			);
+			name = EchoSenseiOSTests;
+			productName = EchoSenseiOSTests;
+			productReference = 0108B957AD8E890F76FA1E73 /* EchoSenseiOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -280,6 +338,7 @@
 			targets = (
 				E00000000000000000000001 /* EchoSenseiOS */,
 				E10000000000000000000001 /* EchoSenseGenAI */,
+				BB32BA8C93862BB369D387B1 /* EchoSenseiOSTests */,
 			);
 		};
 /* End PBXProject section */
@@ -296,6 +355,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C10000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		01AD0C45B0D18C957ABE639B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -435,6 +501,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000000000000000000001 /* EchoSenseGenAI.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E221B45B7797E98DD2DC8F01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B17C130F28CA9EBEC27E32A /* CurrencyRecognitionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -679,6 +753,37 @@
 			};
 			name = Release;
 		};
+		14F6AA5CC5528C37DB22FBF1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.terranet.echosense.tests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EchoSenseiOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EchoSenseiOS";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		20F81CF761CF3EE4C33C27CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.terranet.echosense.tests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EchoSenseiOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EchoSenseiOS";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -705,6 +810,15 @@
 			buildConfigurations = (
 				F10000000000000000000006 /* Debug */,
 				F10000000000000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0FC2C52D76A7F171989B2857 /* Build configuration list for PBXNativeTarget "EchoSenseiOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				14F6AA5CC5528C37DB22FBF1 /* Release */,
+				20F81CF761CF3EE4C33C27CF /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

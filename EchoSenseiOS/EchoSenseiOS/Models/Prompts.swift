@@ -192,20 +192,113 @@ struct CurrencyVisualAssessment {
   }
 }
 
+enum CurrencyDecisionKind {
+  case identified
+  case needsAnotherView
+  case unrecognized
+}
+
+struct CurrencyDecisionResult {
+  let kind: CurrencyDecisionKind
+  let spokenText: String
+  let code: String?
+  let denomination: Int?
+
+  init(
+    kind: CurrencyDecisionKind,
+    spokenText: String,
+    code: String? = nil,
+    denomination: Int? = nil
+  ) {
+    self.kind = kind
+    self.spokenText = spokenText
+    self.code = code
+    self.denomination = denomination
+  }
+}
+
+struct CurrencyScanStabilizer {
+  private let requiredMatches: Int
+  private let duplicateDebounce: TimeInterval
+  private var candidateKey: String?
+  private var candidateCount = 0
+  private var lastAnnouncedKey: String?
+  private var lastAnnouncement = Date.distantPast
+  private var sawGapSinceAnnouncement = false
+
+  init(requiredMatches: Int = 2, duplicateDebounce: TimeInterval = 5) {
+    self.requiredMatches = requiredMatches
+    self.duplicateDebounce = duplicateDebounce
+  }
+
+  mutating func reset() {
+    candidateKey = nil
+    candidateCount = 0
+    lastAnnouncedKey = nil
+    lastAnnouncement = .distantPast
+    sawGapSinceAnnouncement = false
+  }
+
+  mutating func observe(_ decision: CurrencyDecisionResult, now: Date = Date()) -> String? {
+    guard decision.kind == .identified,
+          let code = decision.code,
+          let denomination = decision.denomination else {
+      candidateKey = nil
+      candidateCount = 0
+      if lastAnnouncedKey != nil { sawGapSinceAnnouncement = true }
+      return nil
+    }
+
+    let key = "\(code):\(denomination)"
+    if key == candidateKey {
+      candidateCount += 1
+    } else {
+      candidateKey = key
+      candidateCount = 1
+    }
+    guard candidateCount >= requiredMatches else { return nil }
+
+    if key == lastAnnouncedKey,
+       !sawGapSinceAnnouncement || now.timeIntervalSince(lastAnnouncement) < duplicateDebounce {
+      return nil
+    }
+
+    lastAnnouncedKey = key
+    lastAnnouncement = now
+    sawGapSinceAnnouncement = false
+    return decision.spokenText
+  }
+}
+
 enum CurrencyDecision {
-  static func spokenText(evidence: CurrencyOCREvidence, visual: CurrencyVisualAssessment?) -> String {
+  static func evaluate(
+    evidence: CurrencyOCREvidence,
+    visual: CurrencyVisualAssessment?
+  ) -> CurrencyDecisionResult {
     guard let visual, visual.imageUsable else {
-      return "Unable to identify the bank note. Hold it flat, move closer, and try again."
+      return .init(
+        kind: .unrecognized,
+        spokenText: "Unable to identify the bank note. Hold it flat, move closer, and try again."
+      )
     }
     if visual.explicitlyUnsupported {
-      return "This note was not recognized as a supported currency. Try the other side or improve the lighting."
+      return .init(
+        kind: .unrecognized,
+        spokenText: "This note was not recognized as a supported currency. Try the other side or improve the lighting."
+      )
     }
     guard let code = visual.code, let definition = CurrencyCatalog.definition(for: code) else {
-      return "This note was not recognized as a supported currency. Try the other side or improve the lighting."
+      return .init(
+        kind: .unrecognized,
+        spokenText: "This note was not recognized as a supported currency. Try the other side or improve the lighting."
+      )
     }
     guard let denomination = visual.denomination,
           definition.denominations.contains(denomination) else {
-      return "The currency may be \(definition.name), but the denomination is unclear. Show the other side and try again."
+      return .init(
+        kind: .needsAnotherView,
+        spokenText: "The currency may be \(definition.name), but the denomination is unclear. Show the other side and try again."
+      )
     }
     let countryAgrees = evidence.countryCodes.contains(code)
     let denominationAgrees = evidence.denominations.contains(denomination)
@@ -214,11 +307,28 @@ enum CurrencyDecision {
       !evidence.denominations.isEmpty &&
       !denominationAgrees
     if countryConflicts || denominationConflicts {
-      return "The image and printed text do not agree. Show the other side of the note and try again."
+      return .init(
+        kind: .needsAnotherView,
+        spokenText: "The image and printed text do not agree. Show the other side of the note and try again."
+      )
     }
     if !countryAgrees && !denominationAgrees {
-      return "Likely \(denomination) \(definition.name)."
+      return .init(
+        kind: .identified,
+        spokenText: "Likely \(denomination) \(definition.name).",
+        code: code,
+        denomination: denomination
+      )
     }
-    return "\(denomination) \(definition.name)."
+    return .init(
+      kind: .identified,
+      spokenText: "\(denomination) \(definition.name).",
+      code: code,
+      denomination: denomination
+    )
+  }
+
+  static func spokenText(evidence: CurrencyOCREvidence, visual: CurrencyVisualAssessment?) -> String {
+    evaluate(evidence: evidence, visual: visual).spokenText
   }
 }

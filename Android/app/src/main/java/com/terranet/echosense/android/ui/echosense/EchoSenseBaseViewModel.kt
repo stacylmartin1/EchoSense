@@ -258,7 +258,7 @@ abstract class EchoSenseBaseViewModel(
         startProcessing(announcement)
     }
 
-    fun stopProcessing() {
+    open fun stopProcessing() {
         Log.d(TAG, "Stopping processing")
         // Invalidate current generation to ignore incoming callbacks
         processingGeneration = 0L
